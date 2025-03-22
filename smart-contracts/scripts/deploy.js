@@ -8,8 +8,11 @@ async function main() {
 
   // Deploy PublicKeyRegistry contract
   console.log("Deploying PublicKeyRegistry...");
-  const PublicKeyRegistry = await ethers.getContractFactory("PublicFundTreasury");
-  const publicKeyRegistry = await PublicKeyRegistry.deploy(2);
+  const PublicKeyRegistry = await ethers.getContractFactory("PublicFundManagement");
+  const overrides = {
+    gasLimit: 3000000  // Example gas limit
+  };
+  const publicKeyRegistry = await PublicKeyRegistry.deploy(overrides);
   await publicKeyRegistry.waitForDeployment();
   const publicKeyRegistryAddress = await publicKeyRegistry.getAddress();
   console.log("PublicKeyRegistry deployed to:", publicKeyRegistryAddress);
