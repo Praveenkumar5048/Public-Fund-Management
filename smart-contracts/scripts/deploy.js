@@ -20,7 +20,7 @@ async function main() {
   // Update .env file
   const envContent = `NEXT_PUBLIC_PUBLIC_FUND_TREASURY_ADDRESS=${publicKeyRegistryAddress}\n`;
 
-  fs.writeFileSync("/home/sagar0418/0418/SKP-PFM/frontend/.env", envContent);
+  fs.writeFileSync("C:/Users/DELL/Public-Fund-Management/frontend/.env", envContent);
 
   console.log(".env file updated successfully!");
 

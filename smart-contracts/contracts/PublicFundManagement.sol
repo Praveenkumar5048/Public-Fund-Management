@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "hardhat/console.sol";
+
 contract PublicFundManagement {
     
     address public admin;
@@ -25,6 +27,7 @@ contract PublicFundManagement {
         address recipient;
         uint256 totalAmount;
         uint256 authorityYesVotes;
+        uint256 authorityNoVotes;
         uint256 publicYesVotes;
         uint256 publicNoVotes;
         mapping(address => bool) hasAuthorityVoted;
@@ -257,6 +260,8 @@ contract PublicFundManagement {
         
         if (_vote) {
             proposal.authorityYesVotes++;
+        } else {
+            proposal.authorityNoVotes++;
         }
         
         emit AuthorityVoted(_proposalId, msg.sender, _vote);
@@ -265,6 +270,7 @@ contract PublicFundManagement {
         if (proposal.authorityYesVotes > authorityCount / 2) {
             proposal.state = ProposalState.PublicVoting;
             proposal.publicVotingEndTime = block.timestamp + 7 days; // Public voting lasts for 7 days
+            console.log("Public voting started", proposal.publicVotingEndTime);
             emit PublicVotingStarted(_proposalId, proposal.publicVotingEndTime);
         } 
     }
@@ -368,7 +374,10 @@ contract PublicFundManagement {
         uint256 publicYesVotes,
         uint256 publicNoVotes,
         uint256 currentStage,
-        uint256 totalStages
+        uint256 totalStages,
+        uint256 authorityYesVotes,
+        uint256 authorityNoVotes,
+        uint256 publicVotingEndTime
     ) {
         Proposal storage proposal = proposals[_proposalId];
         return (
@@ -379,7 +388,10 @@ contract PublicFundManagement {
             proposal.publicYesVotes,
             proposal.publicNoVotes,
             proposal.currentStage,
-            proposal.totalStages
+            proposal.totalStages,
+            proposal.authorityYesVotes,
+            proposal.authorityNoVotes,
+            proposal.publicVotingEndTime
         );
     }
     

@@ -126,7 +126,7 @@ export default function PublicFundManagement() {
       const proposalsData: Proposal[] = [];
       for (let i = 0; i < proposalCount; i++) {
         const proposalInfo = await contract.getProposalInfo(i);
-        console.log(proposalInfo);
+        console.log("This is proposal Info", proposalInfo);
         const proposal: Proposal = {
           id: i,
           description: proposalInfo[0], // String
@@ -135,7 +135,7 @@ export default function PublicFundManagement() {
           authorityYesVotes: Number(proposalInfo[3]), // Convert BigInt to number
           publicYesVotes: Number(proposalInfo[4]),
           publicNoVotes: Number(proposalInfo[5]),
-          state: mapStateToString(Number(proposalInfo[6])), // Convert BigInt to number before mapping
+          state: mapStateToString(Number(proposalInfo[6])+1), // Convert BigInt to number before mapping
           publicVotingEndTime: 0, // Not returned by function
           currentStage: 0, // Assuming current stage is missing from contract response
           totalStages: Number(proposalInfo[7])
