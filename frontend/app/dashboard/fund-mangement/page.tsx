@@ -43,7 +43,6 @@ export default function PublicFundManagement() {
   const [error, setError] = useState('');
   const [notification, setNotification] = useState('');
   
-  // stage report info
   const [stageInfoMap, setStageInfoMap] = useState<{[key: string]: Stage | null}>({});
 
   // Form states
@@ -67,8 +66,6 @@ export default function PublicFundManagement() {
   // state variables to store file upload
   const [stageReportFile, setStageReportFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [pinataApiKey, setPinataApiKey] = useState(process.env.NEXT_PUBLIC_PINATA_API_KEY || '');
-  const [pinataSecretApiKey, setPinataSecretApiKey] = useState(process.env.NEXT_PUBLIC_PINATA_SECRET_API_KEY || '');
 
   // Connect to wallet and contract
   useEffect(() => {
@@ -411,6 +408,8 @@ export default function PublicFundManagement() {
   const submitReport = async () => {
     try {
       if (selectedProposalForReport === null || selectedStageForReport === null) {
+        console.log("selectedProposalForReport", selectedProposalForReport);
+        console.log("selectedStageForReport", selectedStageForReport);
         throw new Error("Please select a proposal and stage");
       }
   
@@ -896,13 +895,19 @@ export default function PublicFundManagement() {
                   </div>
                   <div>
                     <p className="text-gray-600">Current Stage</p>
-                    <p className="font-semibold">{proposal.currentStage } of {proposal.totalStages}</p>
+                    <p className="font-semibold">{proposal.currentStage} of {proposal.totalStages}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Votes</p>
                     <p className="font-semibold">
                       Yes: {proposal.publicYesVotes} / No: {proposal.publicNoVotes}
                     </p>
+                  </div>
+                  <div>
+                    <a href={`/dashboard/fund-mangement/${proposal.id}`}
+                       className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                      View
+                    </a>
                   </div>
                 </div>
 
