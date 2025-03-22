@@ -489,6 +489,21 @@ const publicFundingContractABI = [
           "internalType": "uint256",
           "name": "totalStages",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "authorityYesVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "authorityNoVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "publicVotingEndTime",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -579,6 +594,11 @@ const publicFundingContractABI = [
         {
           "internalType": "uint256",
           "name": "authorityYesVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "authorityNoVotes",
           "type": "uint256"
         },
         {
