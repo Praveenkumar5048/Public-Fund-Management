@@ -14,6 +14,7 @@ interface Proposal {
   recipient: string;
   totalAmount: string;
   authorityYesVotes: number;
+  authorityNoVotes: number;
   publicYesVotes: number;
   publicNoVotes: number;
   state: ProposalState;
@@ -45,14 +46,14 @@ export default function PublicFundManagement() {
   const [newAuthorityAddress, setNewAuthorityAddress] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
-  
+
   // Proposal form states
   const [proposalDescription, setProposalDescription] = useState('');
   const [proposalRecipient, setProposalRecipient] = useState('');
   const [proposalTotalAmount, setProposalTotalAmount] = useState('');
   const [stageAmounts, setStageAmounts] = useState<string[]>(['', '', '']);
   const [stageCount, setStageCount] = useState(3);
-  
+
   // Vote form states
   const [publicVoteComment, setPublicVoteComment] = useState('');
   const [stageReport, setStageReport] = useState('');
@@ -66,7 +67,7 @@ export default function PublicFundManagement() {
         try {
           const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
           setAccount(accounts[0]);
-          
+
           await checkRoles(accounts[0]);
           await loadContractData();
         } catch (err) {
@@ -79,7 +80,7 @@ export default function PublicFundManagement() {
     };
 
     connectWallet();
-    
+
     // Listen for account changes
     if (window.ethereum) {
       window.ethereum.on('accountsChanged', (accounts: string[]) => {
@@ -101,7 +102,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const adminAddress = await contract.admin();
       const isAuth = await contract.authorities(address);
-      
+
       setIsAdmin(adminAddress.toLowerCase() === address.toLowerCase());
       setIsAuthority(isAuth);
     } catch (err) {
@@ -114,36 +115,36 @@ export default function PublicFundManagement() {
     setLoading(true);
     try {
       const contract = await getPublicFundingContract();
-      
+
       // Get contract balance
       const balance = await contract.getContractBalance();
       setContractBalance(ethers.formatEther(balance));
-      
+
       // Get proposal count
       const proposalCount = await contract.proposalCount();
-      
+
       // Load all proposals
       const proposalsData: Proposal[] = [];
       for (let i = 0; i < proposalCount; i++) {
         const proposalInfo = await contract.getProposalInfo(i);
-        console.log(proposalInfo);
+        console.log("proposalInfo",proposalInfo);
         const proposal: Proposal = {
           id: i,
           description: proposalInfo[0], // String
           recipient: proposalInfo[1], // Address
           totalAmount: ethers.formatEther(proposalInfo[2]), // Convert BigInt to Ether
-          authorityYesVotes: Number(proposalInfo[3]), // Convert BigInt to number
+          state: mapStateToString(Number(proposalInfo[3])),
           publicYesVotes: Number(proposalInfo[4]),
           publicNoVotes: Number(proposalInfo[5]),
-          state: mapStateToString(Number(proposalInfo[6])), // Convert BigInt to number before mapping
-          publicVotingEndTime: 0, // Not returned by function
-          currentStage: 0, // Assuming current stage is missing from contract response
-          totalStages: Number(proposalInfo[7])
-        };        
-        
+          currentStage: Number(proposalInfo[6]),
+          totalStages: Number(proposalInfo[7]),
+          authorityYesVotes: Number(proposalInfo[8]),
+          authorityNoVotes: Number(proposalInfo[9]),
+          publicVotingEndTime: Number(proposalInfo[10]),
+        };
+
         proposalsData.push(proposal);
       }
-      console.log(proposalsData);
       setProposals(proposalsData);
     } catch (err) {
       console.error("Error loading contract data:", err);
@@ -156,7 +157,7 @@ export default function PublicFundManagement() {
   // Map numeric state to string
   const mapStateToString = (state: number): ProposalState => {
     const states: ProposalState[] = [
-      'Created', 'UnderAuthorityVoting', 'PublicVoting', 
+      'Created', 'UnderAuthorityVoting', 'PublicVoting',
       'Approved', 'Rejected', 'InProgress', 'Completed'
     ];
     return states[state];
@@ -180,11 +181,11 @@ export default function PublicFundManagement() {
       if (!ethers.isAddress(newAuthorityAddress)) {
         throw new Error("Invalid Ethereum address");
       }
-      
+
       const contract = await getPublicFundingContract();
       const tx = await contract.addAuthority(newAuthorityAddress);
       await tx.wait();
-      
+
       showNotification(`Successfully added authority: ${newAuthorityAddress}`);
       setNewAuthorityAddress('');
       await loadContractData();
@@ -199,7 +200,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const tx = await contract.removeAuthority(authorityAddress);
       await tx.wait();
-      
+
       showNotification(`Successfully removed authority: ${authorityAddress}`);
       await loadContractData();
     } catch (err) {
@@ -211,11 +212,11 @@ export default function PublicFundManagement() {
   const depositFunds = async () => {
     try {
       const amount = ethers.parseEther(depositAmount);
-      
+
       const contract = await getPublicFundingContract();
       const tx = await contract.depositFunds({ value: amount });
       await tx.wait();
-      
+
       showNotification(`Successfully deposited ${depositAmount} ETH`);
       setDepositAmount('');
       await loadContractData();
@@ -228,11 +229,11 @@ export default function PublicFundManagement() {
   const withdrawFunds = async () => {
     try {
       const amount = ethers.parseEther(withdrawAmount);
-      
+
       const contract = await getPublicFundingContract();
       const tx = await contract.withdrawFunds(amount);
       await tx.wait();
-      
+
       showNotification(`Successfully withdrawn ${withdrawAmount} ETH`);
       setWithdrawAmount('');
       await loadContractData();
@@ -248,25 +249,25 @@ export default function PublicFundManagement() {
       if (!proposalDescription || !proposalRecipient || !proposalTotalAmount) {
         throw new Error("Please fill all required fields");
       }
-      
+
       if (!ethers.isAddress(proposalRecipient)) {
         throw new Error("Invalid recipient address");
       }
-      
+
       // Filter out empty stage amounts and convert to wei
       const filteredStageAmounts = stageAmounts
         .slice(0, stageCount)
         .filter(amount => !!amount);
-      
+
       if (filteredStageAmounts.length === 0) {
         throw new Error("At least one stage amount is required");
       }
-      
+
       const totalAmount = ethers.parseEther(proposalTotalAmount);
-      const stageAmountsInWei = filteredStageAmounts.map(amount => 
+      const stageAmountsInWei = filteredStageAmounts.map(amount =>
         ethers.parseEther(amount)
       );
-      
+
       const contract = await getPublicFundingContract();
       const tx = await contract.createProposal(
         proposalDescription,
@@ -275,16 +276,16 @@ export default function PublicFundManagement() {
         stageAmountsInWei
       );
       await tx.wait();
-      
+
       showNotification("Proposal created successfully!");
-      
+
       // Reset form
       setProposalDescription('');
       setProposalRecipient('');
       setProposalTotalAmount('');
       setStageAmounts(['', '', '']);
       setStageCount(3);
-      
+
       await loadContractData();
     } catch (err) {
       console.error("Error creating proposal:", err);
@@ -297,7 +298,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const tx = await contract.authorityVoteOnProposal(proposalId, vote);
       await tx.wait();
-      
+
       showNotification(`Vote recorded for proposal #${proposalId}`);
       await loadContractData();
     } catch (err) {
@@ -311,7 +312,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const tx = await contract.publicVoteOnProposal(proposalId, vote, publicVoteComment);
       await tx.wait();
-      
+
       showNotification(`Public vote recorded for proposal #${proposalId}`);
       setPublicVoteComment('');
       await loadContractData();
@@ -326,7 +327,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const tx = await contract.closePublicVoting(proposalId);
       await tx.wait();
-      
+
       showNotification(`Public voting closed for proposal #${proposalId}`);
       await loadContractData();
     } catch (err) {
@@ -340,7 +341,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const tx = await contract.releaseStageAmount(proposalId);
       await tx.wait();
-      
+
       showNotification(`Stage funds released for proposal #${proposalId}`);
       await loadContractData();
     } catch (err) {
@@ -354,11 +355,11 @@ export default function PublicFundManagement() {
       if (selectedProposalForReport === null || selectedStageForReport === null) {
         throw new Error("Please select a proposal and stage");
       }
-      
+
       if (!stageReport) {
         throw new Error("Report cannot be empty");
       }
-      
+
       const contract = await getPublicFundingContract();
       const tx = await contract.submitStageReport(
         selectedProposalForReport,
@@ -366,7 +367,7 @@ export default function PublicFundManagement() {
         stageReport
       );
       await tx.wait();
-      
+
       showNotification(`Report submitted for proposal #${selectedProposalForReport} stage #${selectedStageForReport}`);
       setStageReport('');
       setSelectedProposalForReport(null);
@@ -383,7 +384,7 @@ export default function PublicFundManagement() {
       const contract = await getPublicFundingContract();
       const tx = await contract.voteOnStage(proposalId, stageNumber, approve);
       await tx.wait();
-      
+
       showNotification(`Vote recorded for proposal #${proposalId} stage #${stageNumber}`);
       await loadContractData();
     } catch (err) {
@@ -396,7 +397,7 @@ export default function PublicFundManagement() {
     try {
       const contract = await getPublicFundingContract();
       const stageInfo = await contract.getStageInfo(proposalId, stageNumber);
-      
+
       return {
         amount: ethers.formatEther(stageInfo.amount),
         report: stageInfo.report,
@@ -423,7 +424,7 @@ export default function PublicFundManagement() {
       .slice(0, stageCount)
       .filter(amount => !!amount)
       .reduce((sum, amount) => sum + parseFloat(amount || '0'), 0);
-    
+
     return Math.abs(total - parseFloat(proposalTotalAmount || '0')) < 0.0001;
   };
 
@@ -454,7 +455,7 @@ export default function PublicFundManagement() {
               </span>
             </p>
           </div>
-          <button 
+          <button
             onClick={() => loadContractData()}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
           >
@@ -534,22 +535,22 @@ export default function PublicFundManagement() {
       {activeTab === 'dashboard' && (
         <div>
           <h2 className="text-2xl font-semibold mb-4">System Overview</h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-semibold mb-2">Contract Balance</h3>
               <p className="text-3xl font-bold">{contractBalance} ETH</p>
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-semibold mb-2">Total Proposals</h3>
               <p className="text-3xl font-bold">{proposals.length}</p>
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-lg font-semibold mb-2">Active Proposals</h3>
               <p className="text-3xl font-bold">
-                {proposals.filter(p => 
+                {proposals.filter(p =>
                   p.state !== 'Rejected' && p.state !== 'Completed'
                 ).length}
               </p>
@@ -584,12 +585,12 @@ export default function PublicFundManagement() {
       {activeTab === 'admin' && isAdmin && (
         <div>
           <h2 className="text-2xl font-semibold mb-6">Admin Panel</h2>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Manage Authorities */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-xl font-semibold mb-4">Manage Authorities</h3>
-              
+
               <div className="mb-4">
                 <label className="block text-gray-700 mb-2">Add New Authority</label>
                 <div className="flex">
@@ -608,17 +609,17 @@ export default function PublicFundManagement() {
                   </button>
                 </div>
               </div>
-              
+
               {/* List of authorities would be displayed here if we had a function to get them */}
               <p className="text-sm text-gray-600">
                 Note: Authority list is not available from the contract directly.
               </p>
             </div>
-            
+
             {/* Manage Funds */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-xl font-semibold mb-4">Manage Funds</h3>
-              
+
               <div className="mb-4">
                 <label className="block text-gray-700 mb-2">Deposit Funds</label>
                 <div className="flex">
@@ -638,7 +639,7 @@ export default function PublicFundManagement() {
                   </button>
                 </div>
               </div>
-              
+
               <div className="mb-4">
                 <label className="block text-gray-700 mb-2">Withdraw Funds</label>
                 <div className="flex">
@@ -667,11 +668,11 @@ export default function PublicFundManagement() {
       {activeTab === 'authority' && isAuthority && (
         <div>
           <h2 className="text-2xl font-semibold mb-6">Authority Panel</h2>
-          
+
           {/* Create Proposal Form */}
           <div className="bg-white p-6 rounded-lg shadow mb-8">
             <h3 className="text-xl font-semibold mb-4">Create New Proposal</h3>
-            
+
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-gray-700 mb-2">Description</label>
@@ -682,7 +683,7 @@ export default function PublicFundManagement() {
                   rows={3}
                 />
               </div>
-              
+
               <div>
                 <label className="block text-gray-700 mb-2">Recipient Address</label>
                 <input
@@ -693,7 +694,7 @@ export default function PublicFundManagement() {
                   placeholder="0x..."
                 />
               </div>
-              
+
               <div>
                 <label className="block text-gray-700 mb-2">Total Amount (ETH)</label>
                 <input
@@ -704,7 +705,7 @@ export default function PublicFundManagement() {
                   className="w-full p-2 border rounded"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-gray-700 mb-2">Number of Stages</label>
                 <select
@@ -717,7 +718,7 @@ export default function PublicFundManagement() {
                   <option value={3}>3 Stages</option>
                 </select>
               </div>
-              
+
               {Array.from({ length: stageCount }).map((_, index) => (
                 <div key={index}>
                   <label className="block text-gray-700 mb-2">Stage {index + 1} Amount (ETH)</label>
@@ -730,7 +731,7 @@ export default function PublicFundManagement() {
                   />
                 </div>
               ))}
-              
+
               <button
                 onClick={createProposal}
                 disabled={!validateStageAmounts()}
@@ -738,7 +739,7 @@ export default function PublicFundManagement() {
               >
                 Create Proposal
               </button>
-              
+
               {!validateStageAmounts() && proposalTotalAmount && (
                 <p className="text-red-500 text-sm">
                   Stage amounts must sum to the total amount
@@ -746,11 +747,11 @@ export default function PublicFundManagement() {
               )}
             </div>
           </div>
-          
+
           {/* Authority Voting Section */}
           <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-xl font-semibold mb-4">Proposals Requiring Authority Vote</h3>
-            
+
             {proposals
               .filter(p => p.state === 'UnderAuthorityVoting')
               .map(proposal => (
@@ -759,7 +760,7 @@ export default function PublicFundManagement() {
                   <p className="mb-2">{proposal.description}</p>
                   <p className="text-gray-600 mb-2">Amount: {proposal.totalAmount} ETH</p>
                   <p className="text-gray-600 mb-2">Yes Votes: {proposal.authorityYesVotes}</p>
-                  
+
                   <div className="flex gap-2">
                     <button
                       onClick={() => authorityVote(proposal.id, true)}
@@ -776,10 +777,11 @@ export default function PublicFundManagement() {
                   </div>
                 </div>
               ))}
-            
+
             {!proposals.some(p => p.state === 'UnderAuthorityVoting') && (
               <p className="text-gray-600">No proposals currently require authority voting.</p>
             )}
+
           </div>
         </div>
       )}
@@ -788,23 +790,22 @@ export default function PublicFundManagement() {
       {activeTab === 'proposals' && (
         <div>
           <h2 className="text-2xl font-semibold mb-6">All Proposals</h2>
-          
+
           <div className="space-y-6">
             {proposals.map(proposal => (
               <div key={proposal.id} className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-xl font-semibold">Proposal #{proposal.id}</h3>
-                  <span className={`px-3 py-1 rounded text-sm ${
-                    proposal.state === 'Completed' ? 'bg-green-100 text-green-800' :
-                    proposal.state === 'Rejected' ? 'bg-red-100 text-red-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
+                  <span className={`px-3 py-1 rounded text-sm ${proposal.state === 'Completed' ? 'bg-green-100 text-green-800' :
+                      proposal.state === 'Rejected' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-100 text-blue-800'
+                    }`}>
                     {proposal.state}
                   </span>
                 </div>
-                
+
                 <p className="mb-4">{proposal.description}</p>
-                
+
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                   <div>
                     <p className="text-gray-600">Recipient</p>
@@ -825,7 +826,7 @@ export default function PublicFundManagement() {
                     </p>
                   </div>
                 </div>
-                
+
                 {/* Admin Actions */}
                 {isAdmin && (
                   <div className="mt-4 pt-4 border-t">
@@ -852,7 +853,7 @@ export default function PublicFundManagement() {
                 )}
               </div>
             ))}
-            
+
             {proposals.length === 0 && (
               <p className="text-gray-600">No proposals have been created yet.</p>
             )}
@@ -864,7 +865,7 @@ export default function PublicFundManagement() {
       {activeTab === 'voting' && (
         <div>
           <h2 className="text-2xl font-semibold mb-6">Public Voting</h2>
-          
+
           <div className="space-y-6">
             {proposals
               .filter(p => p.state === 'PublicVoting')
@@ -872,7 +873,7 @@ export default function PublicFundManagement() {
                 <div key={proposal.id} className="bg-white p-6 rounded-lg shadow">
                   <h3 className="text-xl font-semibold mb-4">Proposal #{proposal.id}</h3>
                   <p className="mb-4">{proposal.description}</p>
-                  
+
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-gray-600">Amount Requested</p>
@@ -885,7 +886,7 @@ export default function PublicFundManagement() {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="mb-4">
                     <label className="block text-gray-700 mb-2">Your Comment</label>
                     <textarea
@@ -895,7 +896,7 @@ export default function PublicFundManagement() {
                       rows={3}
                     />
                   </div>
-                  
+
                   <div className="flex gap-2">
                     <button
                       onClick={() => publicVote(proposal.id, true)}
@@ -912,7 +913,7 @@ export default function PublicFundManagement() {
                   </div>
                 </div>
               ))}
-            
+
             {!proposals.some(p => p.state === 'PublicVoting') && (
               <p className="text-gray-600">No proposals are currently open for public voting.</p>
             )}
@@ -924,12 +925,12 @@ export default function PublicFundManagement() {
       {activeTab === 'reports' && (
         <div>
           <h2 className="text-2xl font-semibold mb-6">Stage Reports</h2>
-          
+
           {/* Submit Report Form */}
           {proposals.some(p => p.state === 'InProgress') && (
             <div className="bg-white p-6 rounded-lg shadow mb-8">
               <h3 className="text-xl font-semibold mb-4">Submit Stage Report</h3>
-              
+
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-gray-700 mb-2">Select Proposal</label>
@@ -948,7 +949,7 @@ export default function PublicFundManagement() {
                       ))}
                   </select>
                 </div>
-                
+
                 {selectedProposalForReport !== null && (
                   <>
                     <div>
@@ -961,7 +962,7 @@ export default function PublicFundManagement() {
                         placeholder="Describe the progress and use of funds for this stage..."
                       />
                     </div>
-                    
+
                     <button
                       onClick={submitReport}
                       className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
@@ -973,7 +974,7 @@ export default function PublicFundManagement() {
               </div>
             </div>
           )}
-          
+
           {/* List of Reports */}
           <div className="space-y-6">
             {proposals
@@ -983,12 +984,12 @@ export default function PublicFundManagement() {
                   <h3 className="text-xl font-semibold mb-4">
                     Proposal #{proposal.id} - Stage {proposal.currentStage} of {proposal.totalStages}
                   </h3>
-                  
+
                   {/* Stage details would be loaded dynamically */}
                   <p className="text-gray-600 mb-4">
                     Loading stage details...
                   </p>
-                  
+
                   {isAuthority && (
                     <div className="flex gap-2">
                       <button
