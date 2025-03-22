@@ -30,6 +30,7 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 # Update allowed hosts for production
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+PORT = int(os.environ.get('PORT', 8000))
 
 # Allow Render.com domain
 RENDER_EXTERNAL_HOSTNAME = os.getenv('RENDER_EXTERNAL_HOSTNAME')
