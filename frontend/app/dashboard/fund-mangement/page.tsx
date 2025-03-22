@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getPublicFundingContract } from '@/lib/publicFundingContract';
 import { ethers } from 'ethers';
+import axios from 'axios';
 
 // Define types based on your contract
 type ProposalState = 'Created' | 'UnderAuthorityVoting' | 'PublicVoting' | 'Approved' | 'Rejected' | 'InProgress' | 'Completed';
@@ -61,6 +62,10 @@ export default function PublicFundManagement() {
   const [stageReport, setStageReport] = useState('');
   const [selectedProposalForReport, setSelectedProposalForReport] = useState<number | null>(null);
   const [selectedStageForReport, setSelectedStageForReport] = useState<number | null>(null);
+  
+  // state variables to store file upload
+  const [stageReportFile, setStageReportFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Connect to wallet and contract
   useEffect(() => {
@@ -122,6 +127,28 @@ export default function PublicFundManagement() {
         [key]: info
       }));
     }
+  };
+  
+  // Add this new function for file handling
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setStageReportFile(e.target.files[0]);
+    }
+  };
+
+  // Add this function to handle drag and drop
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setStageReportFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   // Check if user is admin or authority
@@ -385,27 +412,48 @@ export default function PublicFundManagement() {
         console.log("selectedStageForReport", selectedStageForReport);
         throw new Error("Please select a proposal and stage");
       }
-
-      if (!stageReport) {
-        throw new Error("Report cannot be empty");
+  
+      if (!stageReportFile) {
+        throw new Error("Please upload a PDF report");
       }
-
+  
+      setIsUploading(true);
+  
+      // Create form data for Pinata
+      const formData = new FormData();
+      formData.append('file', stageReportFile);
+      
+      // Upload to IPFS using Pinata
+      const url = `https://api.pinata.cloud/pinning/pinFileToIPFS`;
+      const response = await axios.post(url, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          pinata_api_key: "449f8e2d82e11b754f29",
+          pinata_secret_api_key: "8e6da3c908a4d317fe4686b7db62842d88e03b11284734a7f1ae86e8c1f03abe",
+        },
+      });
+      
+      const ipfsCid = response.data.IpfsHash;
+      
+      // Submit the IPFS CID to the contract
       const contract = await getPublicFundingContract();
       const tx = await contract.submitStageReport(
         selectedProposalForReport,
         selectedStageForReport,
-        stageReport
+        ipfsCid
       );
       await tx.wait();
-
+  
       showNotification(`Report submitted for proposal #${selectedProposalForReport} stage #${selectedStageForReport}`);
-      setStageReport('');
+      setStageReportFile(null);
       setSelectedProposalForReport(null);
       setSelectedStageForReport(null);
       await loadContractData();
     } catch (err) {
       console.error("Error submitting report:", err);
       setError("Failed to submit report. " + (err as Error).message);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -995,21 +1043,60 @@ export default function PublicFundManagement() {
                 {selectedProposalForReport !== null && (
                   <>
                     <div>
-                      <label className="block text-gray-700 mb-2">Stage Report</label>
-                      <textarea
-                        value={stageReport}
-                        onChange={(e) => setStageReport(e.target.value)}
-                        className="w-full p-2 border rounded"
-                        rows={4}
-                        placeholder="Describe the progress and use of funds for this stage..."
-                      />
+                        <label className="block text-gray-700 mb-2">Upload Stage Report (PDF)</label>
+                        <div 
+                          className={`border-2 border-dashed rounded-lg p-6 text-center ${stageReportFile ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-blue-500'}`}
+                          onDrop={handleDrop}
+                          onDragOver={handleDragOver}
+                        >
+                          {stageReportFile ? (
+                            <div className="flex flex-col items-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <p className="font-semibold">{stageReportFile.name}</p>
+                              <p className="text-sm text-gray-500 mb-2">({Math.round(stageReportFile.size / 1024)} KB)</p>
+                              <button
+                                onClick={() => setStageReportFile(null)}
+                                className="text-red-500 underline text-sm"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                              </svg>
+                              <p className="mb-1">Drag and drop your PDF report here</p>
+                              <p className="text-sm text-gray-500 mb-2">or</p>
+                              <label className="cursor-pointer bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                Browse Files
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept=".pdf"
+                                  onChange={handleFileChange}
+                                />
+                              </label>
+                            </div>
+                          )}
+                        </div>
                     </div>
 
                     <button
                       onClick={submitReport}
-                      className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
+                      disabled={isUploading || !stageReportFile}
+                      className={`bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400 ${isUploading ? 'opacity-70' : ''}`}
                     >
-                      Submit Report
+                      {isUploading ? (
+                        <span className="flex items-center justify-center">
+                          <span className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></span>
+                          Uploading...
+                        </span>
+                      ) : (
+                        'Submit Report'
+                      )}
                     </button>
                   </>
                 )}
@@ -1055,9 +1142,24 @@ export default function PublicFundManagement() {
                         
                         <div className="mb-4">
                           <p className="text-gray-600">Stage Report</p>
-                          <p className="p-3 bg-gray-50 rounded border">
-                            {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.report || 'No report submitted yet'}
-                          </p>
+                          {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.report ? (
+                            <div className="p-3 bg-gray-50 rounded border">
+                              <p className="mb-2">Report uploaded to IPFS</p>
+                              <a 
+                                href={`https://gateway.pinata.cloud/ipfs/${stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.report}`} 
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 underline flex items-center"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                View PDF Report
+                              </a>
+                            </div>
+                          ) : (
+                            <p className="p-3 bg-gray-50 rounded border">No report submitted yet</p>
+                          )}
                         </div>
                       </div>
                     ) : (
