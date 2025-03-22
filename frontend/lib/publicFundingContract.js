@@ -298,6 +298,25 @@ const publicFundingContractABI = [
           "internalType": "uint256",
           "name": "stageNumber",
           "type": "uint256"
+        }
+      ],
+      "name": "StageCompleted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "stageNumber",
+          "type": "uint256"
         },
         {
           "indexed": false,
@@ -308,6 +327,24 @@ const publicFundingContractABI = [
       ],
       "name": "StageReportSubmitted",
       "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "stageNumber",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProposalStageCompleted",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
       "inputs": [
@@ -551,6 +588,11 @@ const publicFundingContractABI = [
         {
           "internalType": "string",
           "name": "report",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "aiReport",
           "type": "string"
         },
         {

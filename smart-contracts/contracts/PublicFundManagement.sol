@@ -40,6 +40,7 @@ contract PublicFundManagement {
     struct Stage {
         uint256 amount;
         string report;
+        string aiReport;
         mapping(address => bool) hasVoted;
         uint256 voteCount;
         StageState state;
@@ -99,6 +100,7 @@ contract PublicFundManagement {
     event FundsDeposited(address from, uint256 amount, uint256 newBalance);
     event FundsWithdrawn(address to, uint256 amount, uint256 newBalance);
     event SBTContractSet(address sbtContractAddress);
+    event StageCompleted(uint256 proposalId, uint256 stageNumber);
 
     // ==========
     // MODIFIERS
@@ -287,6 +289,43 @@ contract PublicFundManagement {
         emit StageAmountReleased(_proposalId, currentStage, stage.amount);
 
         proposal.currentStage++;
+    }
+
+    function ProposalStageCompleted(
+        uint256 proposalId,
+        uint256 stageNumber
+    ) external onlyAdmin proposalExists(proposalId) {
+        Proposal storage proposal = proposals[proposalId];
+        require(
+            proposal.state == ProposalState.InProgress,
+            "Proposal is not in progress"
+        );
+        require(stageNumber < proposal.totalStages, "Invalid stage number");
+
+        Stage storage stage = proposal.stages[stageNumber];
+        require(
+            stage.state == StageState.InProgress,
+            "Stage is not in progress"
+        );
+        stage.state = StageState.Completed;
+        emit StageCompleted(proposalId, stageNumber);
+
+        if (stageNumber == proposal.totalStages - 1) {
+            proposal.state = ProposalState.Completed;
+            emit ProposalCompleted(proposalId);
+        } else {
+            uint256 nextStageIndex = stageNumber + 1;
+            Stage storage nextStage = proposal.stages[nextStageIndex];
+            require(
+                contractBalance >= nextStage.amount,
+                "Contract does not have enough funds for this stage"
+            );
+            contractBalance -= nextStage.amount;
+            nextStage.state = StageState.InProgress;
+            
+            payable(proposal.recipient).transfer(nextStage.amount);
+            proposal.currentStage = nextStageIndex;
+        }
     }
 
     // ====================
@@ -583,6 +622,7 @@ contract PublicFundManagement {
      * @param _stageNumber Stage number
      * @return amount Amount allocated for this stage
      * @return report Report submitted for this stage
+     * @return aiReport AI report for this stage
      * @return voteCount Number of yes votes from authorities
      * @return state Current state of the stage
      */
@@ -596,6 +636,7 @@ contract PublicFundManagement {
         returns (
             uint256 amount,
             string memory report,
+            string memory aiReport,
             uint256 voteCount,
             StageState state
         )
@@ -605,7 +646,13 @@ contract PublicFundManagement {
             "Invalid stage number"
         );
         Stage storage stage = proposals[_proposalId].stages[_stageNumber];
-        return (stage.amount, stage.report, stage.voteCount, stage.state);
+        return (
+            stage.amount,
+            stage.report,
+            stage.aiReport,
+            stage.voteCount,
+            stage.state
+        );
     }
 
     /**
