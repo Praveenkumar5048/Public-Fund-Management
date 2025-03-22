@@ -2,7 +2,13 @@ import { BrowserProvider, Contract } from 'ethers';
 
 const publicFundingContractABI = [
     {
-      "inputs": [],
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_sbtContractAddress",
+          "type": "address"
+        }
+      ],
       "stateMutability": "nonpayable",
       "type": "constructor"
     },
@@ -219,6 +225,19 @@ const publicFundingContractABI = [
         }
       ],
       "name": "PublicVotingStarted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "sbtContractAddress",
+          "type": "address"
+        }
+      ],
+      "name": "SBTContractSet",
       "type": "event"
     },
     {
@@ -549,6 +568,30 @@ const publicFundingContractABI = [
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_proposalId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "_voter",
+          "type": "address"
+        }
+      ],
+      "name": "hasVoted",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "proposalCount",
       "outputs": [
@@ -680,6 +723,32 @@ const publicFundingContractABI = [
         }
       ],
       "name": "removeAuthority",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "sbtContract",
+      "outputs": [
+        {
+          "internalType": "contract ISBT",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_sbtContract",
+          "type": "address"
+        }
+      ],
+      "name": "setSBTContract",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

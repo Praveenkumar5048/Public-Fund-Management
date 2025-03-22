@@ -65,7 +65,7 @@ export function PublicFundManagement() {
         proposals={proposals}
       />
 
-      {activeTab === 'dashboard' && <Dashboard proposals={proposals} contractBalance={contractBalance} />}
+      {activeTab === 'dashboard' && <Dashboard address={account} proposals={proposals} contractBalance={contractBalance} />}
       {activeTab === 'admin' && isAdmin && <AdminPanel showNotification={showNotification} onError={setError} />}
       {activeTab === 'authority' && isAuthority && <AuthorityPanel showNotification={showNotification} onError={setError} />}
       {activeTab === 'proposals' && <ProposalsList proposals={proposals} isAdmin={isAdmin} showNotification={showNotification} onError={setError} />}
