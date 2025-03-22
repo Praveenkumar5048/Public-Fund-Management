@@ -1,6 +1,6 @@
 import { BrowserProvider, Contract } from 'ethers';
 
-const contractABI = [
+const contractABI =  [
     {
       "inputs": [],
       "stateMutability": "nonpayable",
