@@ -2,13 +2,7 @@ import { BrowserProvider, Contract } from 'ethers';
 
 const publicFundingContractABI = [
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_requiredApprovals",
-          "type": "uint256"
-        }
-      ],
+      "inputs": [],
       "stateMutability": "nonpayable",
       "type": "constructor"
     },
@@ -16,7 +10,7 @@ const publicFundingContractABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
           "name": "authority",
           "type": "address"
@@ -29,7 +23,7 @@ const publicFundingContractABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
           "name": "authority",
           "type": "address"
@@ -42,16 +36,22 @@ const publicFundingContractABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "uint256",
           "name": "proposalId",
           "type": "uint256"
         },
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
           "name": "authority",
           "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "vote",
+          "type": "bool"
         }
       ],
       "name": "AuthorityVoted",
@@ -61,15 +61,21 @@ const publicFundingContractABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
-          "name": "depositor",
+          "name": "from",
           "type": "address"
         },
         {
           "indexed": false,
           "internalType": "uint256",
           "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newBalance",
           "type": "uint256"
         }
       ],
@@ -80,15 +86,9 @@ const publicFundingContractABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
-          "internalType": "uint256",
-          "name": "proposalId",
-          "type": "uint256"
-        },
-        {
-          "indexed": true,
+          "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "to",
           "type": "address"
         },
         {
@@ -99,19 +99,19 @@ const publicFundingContractABI = [
         },
         {
           "indexed": false,
-          "internalType": "uint8",
-          "name": "stage",
-          "type": "uint8"
+          "internalType": "uint256",
+          "name": "newBalance",
+          "type": "uint256"
         }
       ],
-      "name": "FundsReleased",
+      "name": "FundsWithdrawn",
       "type": "event"
     },
     {
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "uint256",
           "name": "proposalId",
           "type": "uint256"
@@ -126,51 +126,140 @@ const publicFundingContractABI = [
         {
           "indexed": false,
           "internalType": "uint256",
-          "name": "id",
+          "name": "proposalId",
           "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "string",
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint256",
-          "name": "amount",
-          "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "recipient",
-          "type": "address"
         }
       ],
-      "name": "ProposalSubmitted",
+      "name": "ProposalCompleted",
       "type": "event"
     },
     {
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "uint256",
           "name": "proposalId",
           "type": "uint256"
         },
         {
           "indexed": false,
-          "internalType": "uint8",
-          "name": "stage",
-          "type": "uint8"
+          "internalType": "address",
+          "name": "creator",
+          "type": "address"
         },
         {
-          "indexed": true,
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProposalCreated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProposalRejected",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
           "internalType": "address",
-          "name": "authority",
+          "name": "voter",
           "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "vote",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "comment",
+          "type": "string"
+        }
+      ],
+      "name": "PublicVoted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "endTime",
+          "type": "uint256"
+        }
+      ],
+      "name": "PublicVotingStarted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "stageNumber",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "StageAmountReleased",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "stageNumber",
+          "type": "uint256"
         }
       ],
       "name": "StageApproved",
@@ -180,35 +269,16 @@ const publicFundingContractABI = [
       "anonymous": false,
       "inputs": [
         {
-          "indexed": true,
+          "indexed": false,
           "internalType": "uint256",
           "name": "proposalId",
           "type": "uint256"
         },
         {
           "indexed": false,
-          "internalType": "uint8",
-          "name": "stage",
-          "type": "uint8"
-        }
-      ],
-      "name": "StageCompleted",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": true,
           "internalType": "uint256",
-          "name": "proposalId",
+          "name": "stageNumber",
           "type": "uint256"
-        },
-        {
-          "indexed": false,
-          "internalType": "uint8",
-          "name": "stage",
-          "type": "uint8"
         },
         {
           "indexed": false,
@@ -234,27 +304,8 @@ const publicFundingContractABI = [
       "type": "function"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_proposalId",
-          "type": "uint256"
-        }
-      ],
-      "name": "approveStage",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "name": "authorities",
+      "inputs": [],
+      "name": "admin",
       "outputs": [
         {
           "internalType": "address",
@@ -263,6 +314,110 @@ const publicFundingContractABI = [
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "authorities",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "authorityCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_proposalId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "_vote",
+          "type": "bool"
+        }
+      ],
+      "name": "authorityVoteOnProposal",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_proposalId",
+          "type": "uint256"
+        }
+      ],
+      "name": "closePublicVoting",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "contractBalance",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_description",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "_recipient",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_totalAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "_stageAmounts",
+          "type": "uint256[]"
+        }
+      ],
+      "name": "createProposal",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -274,52 +429,7 @@ const publicFundingContractABI = [
     },
     {
       "inputs": [],
-      "name": "fundBalance",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getAllAuthorities",
-      "outputs": [
-        {
-          "internalType": "address[]",
-          "name": "",
-          "type": "address[]"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_proposalId",
-          "type": "uint256"
-        }
-      ],
-      "name": "getApprovalCount",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getAuthorityCount",
+      "name": "getContractBalance",
       "outputs": [
         {
           "internalType": "uint256",
@@ -338,125 +448,86 @@ const publicFundingContractABI = [
           "type": "uint256"
         }
       ],
-      "name": "getProposalStageDetails",
+      "name": "getProposalInfo",
       "outputs": [
         {
-          "internalType": "uint8",
-          "name": "currentStage",
+          "internalType": "string",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "enum PublicFundManagement.ProposalState",
+          "name": "state",
           "type": "uint8"
         },
         {
-          "internalType": "uint8",
+          "internalType": "uint256",
+          "name": "publicYesVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "publicNoVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "currentStage",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
           "name": "totalStages",
-          "type": "uint8"
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_proposalId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_stageNumber",
+          "type": "uint256"
+        }
+      ],
+      "name": "getStageInfo",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
         },
         {
           "internalType": "string",
-          "name": "stageReport",
+          "name": "report",
           "type": "string"
         },
         {
           "internalType": "uint256",
-          "name": "stageApprovalCount",
+          "name": "voteCount",
           "type": "uint256"
         },
         {
-          "internalType": "bool",
-          "name": "stageLocked",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getTreasuryBalance",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_proposalId",
-          "type": "uint256"
-        },
-        {
-          "internalType": "address",
-          "name": "_authority",
-          "type": "address"
-        }
-      ],
-      "name": "hasApprovedStage",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_proposalId",
-          "type": "uint256"
-        },
-        {
-          "internalType": "address",
-          "name": "_authority",
-          "type": "address"
-        }
-      ],
-      "name": "hasVoted",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "name": "isAuthority",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "owner",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
+          "internalType": "enum PublicFundManagement.StageState",
+          "name": "state",
+          "type": "uint8"
         }
       ],
       "stateMutability": "view",
@@ -496,59 +567,49 @@ const publicFundingContractABI = [
           "type": "string"
         },
         {
-          "internalType": "uint256",
-          "name": "amount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "address payable",
+          "internalType": "address",
           "name": "recipient",
           "type": "address"
         },
         {
           "internalType": "uint256",
-          "name": "approvalCount",
+          "name": "totalAmount",
           "type": "uint256"
-        },
-        {
-          "internalType": "bool",
-          "name": "approved",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "executed",
-          "type": "bool"
         },
         {
           "internalType": "uint256",
-          "name": "createdAt",
+          "name": "authorityYesVotes",
           "type": "uint256"
         },
         {
-          "internalType": "uint8",
-          "name": "currentStage",
+          "internalType": "uint256",
+          "name": "publicYesVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "publicNoVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "enum PublicFundManagement.ProposalState",
+          "name": "state",
           "type": "uint8"
         },
         {
-          "internalType": "uint8",
+          "internalType": "uint256",
+          "name": "publicVotingEndTime",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
           "name": "totalStages",
-          "type": "uint8"
-        },
-        {
-          "internalType": "string",
-          "name": "stageReport",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "stageApprovalCount",
           "type": "uint256"
         },
         {
-          "internalType": "bool",
-          "name": "stageLocked",
-          "type": "bool"
+          "internalType": "uint256",
+          "name": "currentStage",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -560,9 +621,19 @@ const publicFundingContractABI = [
           "internalType": "uint256",
           "name": "_proposalId",
           "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "_vote",
+          "type": "bool"
+        },
+        {
+          "internalType": "string",
+          "name": "_comment",
+          "type": "string"
         }
       ],
-      "name": "releaseInitialFunds",
+      "name": "publicVoteOnProposal",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -575,7 +646,7 @@ const publicFundingContractABI = [
           "type": "uint256"
         }
       ],
-      "name": "releaseNextStageFunds",
+      "name": "releaseStageAmount",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -594,46 +665,15 @@ const publicFundingContractABI = [
       "type": "function"
     },
     {
-      "inputs": [],
-      "name": "requiredApprovals",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "string",
-          "name": "_description",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_amount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "address payable",
-          "name": "_recipient",
-          "type": "address"
-        }
-      ],
-      "name": "submitProposal",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
       "inputs": [
         {
           "internalType": "uint256",
           "name": "_proposalId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_stageNumber",
           "type": "uint256"
         },
         {
@@ -651,11 +691,21 @@ const publicFundingContractABI = [
       "inputs": [
         {
           "internalType": "uint256",
-          "name": "_newRequiredApprovals",
+          "name": "_proposalId",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_stageNumber",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "_approve",
+          "type": "bool"
         }
       ],
-      "name": "updateRequiredApprovals",
+      "name": "voteOnStage",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -664,11 +714,11 @@ const publicFundingContractABI = [
       "inputs": [
         {
           "internalType": "uint256",
-          "name": "_proposalId",
+          "name": "_amount",
           "type": "uint256"
         }
       ],
-      "name": "voteOnProposal",
+      "name": "withdrawFunds",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

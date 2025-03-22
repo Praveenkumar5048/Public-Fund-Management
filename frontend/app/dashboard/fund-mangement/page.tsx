@@ -1,1123 +1,1015 @@
-"use client"
-import React, { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+'use client';
+
+import { useState, useEffect } from 'react';
 import { getPublicFundingContract } from '@/lib/publicFundingContract';
-import { toast } from 'react-hot-toast';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Wallet,
-  Home,
-  Send,
-  Users,
-  Vote,
-  BadgeDollarSign,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Shield,
-  Trash2,
-  Settings,
-  ArrowRight,
-  CircleDollarSign,
-  FileCheck,
-  UserCheck,
-  AlertCircle,
-  FileText,
-  ArrowUpRight,
-  X
-} from 'lucide-react';
-import { format } from 'date-fns';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
+import { ethers } from 'ethers';
 
-
-interface StageDetails {
-  currentStage: number;
-  totalStages: number;
-  stageReport: string;
-  stageApprovalCount: number;
-  stageLocked: boolean;
-}
+// Define types based on your contract
+type ProposalState = 'Created' | 'UnderAuthorityVoting' | 'PublicVoting' | 'Approved' | 'Rejected' | 'InProgress' | 'Completed';
+type StageState = 'NotStarted' | 'InProgress' | 'Completed';
 
 interface Proposal {
   id: number;
   description: string;
-  amount: string;
   recipient: string;
-  approvalCount: number;
-  approved: boolean;
-  executed: boolean;
-  createdAt: number;
-  stageDetails?: StageDetails;
+  totalAmount: string;
+  authorityYesVotes: number;
+  publicYesVotes: number;
+  publicNoVotes: number;
+  state: ProposalState;
+  publicVotingEndTime: number;
+  currentStage: number;
+  totalStages: number;
 }
 
-export default function FundManagement() {
+interface Stage {
+  amount: string;
+  report: string;
+  voteCount: number;
+  state: StageState;
+}
+
+export default function PublicFundManagement() {
+  // State variables
   const [account, setAccount] = useState<string>('');
-  const [balance, setBalance] = useState<string>('0');
-  const [isOwner, setIsOwner] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthority, setIsAuthority] = useState(false);
+  const [contractBalance, setContractBalance] = useState('0');
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [authorities, setAuthorities] = useState<string[]>([]);
-  const [requiredApprovals, setRequiredApprovals] = useState<number>(0);
-  const [newRequiredApprovals, setNewRequiredApprovals] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [stageReport, setStageReport] = useState('');
-  const [stageReportId, setStageReportId] = useState<number>(0);
-
-  const [errors, setErrors] = useState({
-    deposit: '',
-    proposal: {
-      description: '',
-      amount: '',
-      recipient: '',
-    },
-  });
-
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [selectedReport, setSelectedReport] = useState('');
-
-  // Add this function to your component
-  const openReportModal = (report: any, id: number) => {
-    setSelectedReport(report);
-    setReportModalOpen(true);
-    setStageReportId(id);
-  };
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notification, setNotification] = useState('');
 
   // Form states
+  const [newAuthorityAddress, setNewAuthorityAddress] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
-  const [newAuthority, setNewAuthority] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  
+  // Proposal form states
   const [proposalDescription, setProposalDescription] = useState('');
-  const [proposalAmount, setProposalAmount] = useState('');
   const [proposalRecipient, setProposalRecipient] = useState('');
+  const [proposalTotalAmount, setProposalTotalAmount] = useState('');
+  const [stageAmounts, setStageAmounts] = useState<string[]>(['', '', '']);
+  const [stageCount, setStageCount] = useState(3);
+  
+  // Vote form states
+  const [publicVoteComment, setPublicVoteComment] = useState('');
+  const [stageReport, setStageReport] = useState('');
+  const [selectedProposalForReport, setSelectedProposalForReport] = useState<number | null>(null);
+  const [selectedStageForReport, setSelectedStageForReport] = useState<number | null>(null);
 
+  // Connect to wallet and contract
   useEffect(() => {
-    const init = async () => {
-      try {
-        if (typeof window.ethereum === 'undefined') {
-          toast.error('Please install MetaMask to use this application');
-          return;
+    const connectWallet = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          setAccount(accounts[0]);
+          
+          await checkRoles(accounts[0]);
+          await loadContractData();
+        } catch (err) {
+          console.error("Error connecting to wallet:", err);
+          setError("Failed to connect to wallet. Please make sure MetaMask is installed and unlocked.");
         }
-
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const accounts = await provider.send('eth_requestAccounts', []);
-        setAccount(accounts[0]);
-
-        const contract = await getPublicFundingContract();
-        const owner = await contract.owner();
-        const isAuth = await contract.isAuthority(accounts[0]);
-        const balance = await contract.getTreasuryBalance();
-        const balanceFormatted = ethers.formatEther(balance);
-        const authList = await contract.getAllAuthorities();
-        const reqApprovals = await contract.requiredApprovals();
-
-        setIsOwner(owner.toLowerCase() === accounts[0].toLowerCase());
-        setIsAuthority(isAuth);
-        setBalance(balanceFormatted);
-        setAuthorities(authList);
-        setRequiredApprovals(Number(reqApprovals));
-
-        // Load proposals
-        const proposalCount = await contract.proposalCount();
-        const loadedProposals: Proposal[] = [];
-
-        for (let i = 1; i <= Number(proposalCount); i++) {
-          const proposal = await contract.proposals(i);
-          const stageDetails = await contract.getProposalStageDetails(i);
-
-          loadedProposals.push({
-            id: Number(proposal.id),
-            description: proposal.description,
-            amount: ethers.formatEther(proposal.amount),
-            recipient: proposal.recipient,
-            approvalCount: Number(proposal.approvalCount),
-            approved: proposal.approved,
-            executed: proposal.executed,
-            createdAt: Number(proposal.createdAt),
-            stageDetails: {
-              currentStage: Number(stageDetails.currentStage),
-              totalStages: Number(stageDetails.totalStages),
-              stageReport: stageDetails.stageReport,
-              stageApprovalCount: Number(stageDetails.stageApprovalCount),
-              stageLocked: stageDetails.stageLocked
-            }
-          });
-        }
-        setProposals(loadedProposals.reverse());
-      } catch (error) {
-        console.error('Initialization error:', error);
-        toast.error('Failed to initialize the application.');
+      } else {
+        setError("Please install MetaMask to use this application.");
       }
     };
 
-    init();
-
+    connectWallet();
+    
     // Listen for account changes
     if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts: any) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-        } else {
-          setAccount('');
-          toast.error('Disconnected from MetaMask. Please reconnect.');
-        }
+      window.ethereum.on('accountsChanged', (accounts: string[]) => {
+        setAccount(accounts[0]);
+        checkRoles(accounts[0]);
       });
     }
 
     return () => {
       if (window.ethereum) {
-        window.ethereum.removeListener('accountsChanged', setAccount);
+        window.ethereum.removeAllListeners();
       }
     };
-  }, [account]);
+  }, []);
 
-  const handleDeposit = async () => {
+  // Check if user is admin or authority
+  const checkRoles = async (address: string) => {
     try {
-      if (!depositAmount || parseFloat(depositAmount) <= 0) {
-        toast.error('Please enter a valid amount');
-        return;
-      }
-
       const contract = await getPublicFundingContract();
-      const tx = await contract.depositFunds({
-        value: ethers.parseEther(depositAmount)
-      });
+      const adminAddress = await contract.admin();
+      const isAuth = await contract.authorities(address);
+      
+      setIsAdmin(adminAddress.toLowerCase() === address.toLowerCase());
+      setIsAuthority(isAuth);
+    } catch (err) {
+      console.error("Error checking roles:", err);
+    }
+  };
 
-      toast.success('Transaction submitted. Waiting for confirmation...');
+  // Load all contract data
+  const loadContractData = async () => {
+    setLoading(true);
+    try {
+      const contract = await getPublicFundingContract();
+      
+      // Get contract balance
+      const balance = await contract.getContractBalance();
+      setContractBalance(ethers.formatEther(balance));
+      
+      // Get proposal count
+      const proposalCount = await contract.proposalCount();
+      
+      // Load all proposals
+      const proposalsData: Proposal[] = [];
+      for (let i = 0; i < proposalCount; i++) {
+        const proposalInfo = await contract.getProposalInfo(i);
+        console.log(proposalInfo);
+        const proposal: Proposal = {
+          id: i,
+          description: proposalInfo[0], // String
+          recipient: proposalInfo[1], // Address
+          totalAmount: ethers.formatEther(proposalInfo[2]), // Convert BigInt to Ether
+          authorityYesVotes: Number(proposalInfo[3]), // Convert BigInt to number
+          publicYesVotes: Number(proposalInfo[4]),
+          publicNoVotes: Number(proposalInfo[5]),
+          state: mapStateToString(Number(proposalInfo[6])), // Convert BigInt to number before mapping
+          publicVotingEndTime: 0, // Not returned by function
+          currentStage: 0, // Assuming current stage is missing from contract response
+          totalStages: Number(proposalInfo[7])
+        };        
+        
+        proposalsData.push(proposal);
+      }
+      console.log(proposalsData);
+      setProposals(proposalsData);
+    } catch (err) {
+      console.error("Error loading contract data:", err);
+      setError("Failed to load contract data. Please check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Map numeric state to string
+  const mapStateToString = (state: number): ProposalState => {
+    const states: ProposalState[] = [
+      'Created', 'UnderAuthorityVoting', 'PublicVoting', 
+      'Approved', 'Rejected', 'InProgress', 'Completed'
+    ];
+    return states[state];
+  };
+
+  // Map numeric stage state to string
+  const mapStageStateToString = (state: number): StageState => {
+    const states: StageState[] = ['NotStarted', 'InProgress', 'Completed'];
+    return states[state];
+  };
+
+  // Notification handler
+  const showNotification = (message: string) => {
+    setNotification(message);
+    setTimeout(() => setNotification(''), 5000);
+  };
+
+  // Contract interaction functions
+  const addAuthority = async () => {
+    try {
+      if (!ethers.isAddress(newAuthorityAddress)) {
+        throw new Error("Invalid Ethereum address");
+      }
+      
+      const contract = await getPublicFundingContract();
+      const tx = await contract.addAuthority(newAuthorityAddress);
       await tx.wait();
-      toast.success('Funds deposited successfully!');
+      
+      showNotification(`Successfully added authority: ${newAuthorityAddress}`);
+      setNewAuthorityAddress('');
+      await loadContractData();
+    } catch (err) {
+      console.error("Error adding authority:", err);
+      setError("Failed to add authority. " + (err as Error).message);
+    }
+  };
 
-      const currentBalance = await contract.getTreasuryBalance();
-      const balanceFormatted = ethers.formatEther(currentBalance);
-      setBalance(balanceFormatted);
+  const removeAuthority = async (authorityAddress: string) => {
+    try {
+      const contract = await getPublicFundingContract();
+      const tx = await contract.removeAuthority(authorityAddress);
+      await tx.wait();
+      
+      showNotification(`Successfully removed authority: ${authorityAddress}`);
+      await loadContractData();
+    } catch (err) {
+      console.error("Error removing authority:", err);
+      setError("Failed to remove authority. " + (err as Error).message);
+    }
+  };
+
+  const depositFunds = async () => {
+    try {
+      const amount = ethers.parseEther(depositAmount);
+      
+      const contract = await getPublicFundingContract();
+      const tx = await contract.depositFunds({ value: amount });
+      await tx.wait();
+      
+      showNotification(`Successfully deposited ${depositAmount} ETH`);
       setDepositAmount('');
-    } catch (error) {
-      console.error('Deposit error:', error);
-      toast.error('Failed to deposit funds. Please check your wallet balance.');
+      await loadContractData();
+    } catch (err) {
+      console.error("Error depositing funds:", err);
+      setError("Failed to deposit funds. " + (err as Error).message);
     }
   };
 
-  const handleAddAuthority = async () => {
+  const withdrawFunds = async () => {
     try {
-      if (!ethers.isAddress(newAuthority)) {
-        toast.error('Please enter a valid Ethereum address');
-        return;
-      }
-
+      const amount = ethers.parseEther(withdrawAmount);
+      
       const contract = await getPublicFundingContract();
-      const tx = await contract.addAuthority(newAuthority);
-
-      toast.success('Adding new authority. Please wait for confirmation...');
+      const tx = await contract.withdrawFunds(amount);
       await tx.wait();
-      toast.success('Authority added successfully!');
-
-      setAuthorities(await contract.getAllAuthorities());
-      setNewAuthority('');
-    } catch (error) {
-      console.error('Add authority error:', error);
-      toast.error('Failed to add authority. Make sure you are the owner.');
+      
+      showNotification(`Successfully withdrawn ${withdrawAmount} ETH`);
+      setWithdrawAmount('');
+      await loadContractData();
+    } catch (err) {
+      console.error("Error withdrawing funds:", err);
+      setError("Failed to withdraw funds. " + (err as Error).message);
     }
   };
 
-  const handleRemoveAuthority = async (authority: string) => {
+  const createProposal = async () => {
     try {
-      const contract = await getPublicFundingContract();
-      const tx = await contract.removeAuthority(authority);
-
-      toast.success('Removing authority. Please wait for confirmation...');
-      await tx.wait();
-      toast.success('Authority removed successfully!');
-
-      setAuthorities(await contract.getAllAuthorities());
-    } catch (error) {
-      console.error('Remove authority error:', error);
-      toast.error('Failed to remove authority. Check if minimum authorities requirement is met.');
-    }
-  };
-
-  const handleUpdateRequiredApprovals = async () => {
-    try {
-      const newValue = parseInt(newRequiredApprovals);
-      if (isNaN(newValue) || newValue <= 0) {
-        toast.error('Please enter a valid number of required approvals');
-        return;
+      // Validate inputs
+      if (!proposalDescription || !proposalRecipient || !proposalTotalAmount) {
+        throw new Error("Please fill all required fields");
       }
-
-      const contract = await getPublicFundingContract();
-      const tx = await contract.updateRequiredApprovals(newValue);
-
-      toast.success('Updating required approvals. Please wait for confirmation...');
-      await tx.wait();
-      toast.success('Required approvals updated successfully!');
-
-      setRequiredApprovals(newValue);
-      setNewRequiredApprovals('');
-    } catch (error) {
-      console.error('Update required approvals error:', error);
-      toast.error('Failed to update required approvals. Check if the new value is valid.');
-    }
-  };
-
-  const handleSubmitProposal = async () => {
-    try {
-      if (!proposalDescription || !proposalAmount || !proposalRecipient) {
-        toast.error('Please fill in all proposal details');
-        return;
-      }
-
+      
       if (!ethers.isAddress(proposalRecipient)) {
-        toast.error('Please enter a valid recipient address');
-        return;
+        throw new Error("Invalid recipient address");
       }
-
-      const contract = await getPublicFundingContract();
-      const tx = await contract.submitProposal(
-        proposalDescription,
-        ethers.parseEther(proposalAmount),
-        proposalRecipient
+      
+      // Filter out empty stage amounts and convert to wei
+      const filteredStageAmounts = stageAmounts
+        .slice(0, stageCount)
+        .filter(amount => !!amount);
+      
+      if (filteredStageAmounts.length === 0) {
+        throw new Error("At least one stage amount is required");
+      }
+      
+      const totalAmount = ethers.parseEther(proposalTotalAmount);
+      const stageAmountsInWei = filteredStageAmounts.map(amount => 
+        ethers.parseEther(amount)
       );
-
-      toast.success('Submitting proposal. Please wait for confirmation...');
+      
+      const contract = await getPublicFundingContract();
+      const tx = await contract.createProposal(
+        proposalDescription,
+        proposalRecipient,
+        totalAmount,
+        stageAmountsInWei
+      );
       await tx.wait();
-      toast.success('Proposal submitted successfully!');
-
+      
+      showNotification("Proposal created successfully!");
+      
       // Reset form
       setProposalDescription('');
-      setProposalAmount('');
       setProposalRecipient('');
-
-      // Refresh proposals
-      const proposalCount = await contract.proposalCount();
-      const proposal = await contract.proposals(proposalCount);
-      const stageDetails = await contract.getProposalStageDetails(proposalCount);
-
-      setProposals([{
-        id: Number(proposal.id),
-        description: proposal.description,
-        amount: ethers.formatEther(proposal.amount),
-        recipient: proposal.recipient,
-        approvalCount: Number(proposal.approvalCount),
-        approved: proposal.approved,
-        executed: proposal.executed,
-        createdAt: Number(proposal.createdAt),
-        stageDetails: {
-          currentStage: Number(stageDetails.currentStage),
-          totalStages: Number(stageDetails.totalStages),
-          stageReport: stageDetails.stageReport,
-          stageApprovalCount: Number(stageDetails.stageApprovalCount),
-          stageLocked: stageDetails.stageLocked
-        }
-      }, ...proposals]);
-    } catch (error) {
-      console.error('Submit proposal error:', error);
-      toast.error('Failed to submit proposal. Please try again.');
+      setProposalTotalAmount('');
+      setStageAmounts(['', '', '']);
+      setStageCount(3);
+      
+      await loadContractData();
+    } catch (err) {
+      console.error("Error creating proposal:", err);
+      setError("Failed to create proposal. " + (err as Error).message);
     }
   };
 
-  const handleVote = async (proposalId: number) => {
+  const authorityVote = async (proposalId: number, vote: boolean) => {
     try {
       const contract = await getPublicFundingContract();
-      const tx = await contract.voteOnProposal(proposalId);
-
-      toast.success('Submitting vote. Please wait for confirmation...');
+      const tx = await contract.authorityVoteOnProposal(proposalId, vote);
       await tx.wait();
-      toast.success('Vote cast successfully!');
-
-      await refreshProposalData(proposalId);
-    } catch (error) {
-      console.error('Vote error:', error);
-      toast.error('Failed to cast vote. You may have already voted on this proposal.');
+      
+      showNotification(`Vote recorded for proposal #${proposalId}`);
+      await loadContractData();
+    } catch (err) {
+      console.error("Error voting on proposal:", err);
+      setError("Failed to vote. " + (err as Error).message);
     }
   };
 
-  const handleSubmitStageReport = async (proposalId: number) => {
+  const publicVote = async (proposalId: number, vote: boolean) => {
     try {
-      if (!stageReport.trim()) {
-        toast.error('Please provide a stage report');
-        return;
+      const contract = await getPublicFundingContract();
+      const tx = await contract.publicVoteOnProposal(proposalId, vote, publicVoteComment);
+      await tx.wait();
+      
+      showNotification(`Public vote recorded for proposal #${proposalId}`);
+      setPublicVoteComment('');
+      await loadContractData();
+    } catch (err) {
+      console.error("Error public voting on proposal:", err);
+      setError("Failed to vote. " + (err as Error).message);
+    }
+  };
+
+  const closePublicVoting = async (proposalId: number) => {
+    try {
+      const contract = await getPublicFundingContract();
+      const tx = await contract.closePublicVoting(proposalId);
+      await tx.wait();
+      
+      showNotification(`Public voting closed for proposal #${proposalId}`);
+      await loadContractData();
+    } catch (err) {
+      console.error("Error closing public voting:", err);
+      setError("Failed to close voting. " + (err as Error).message);
+    }
+  };
+
+  const releaseStageAmount = async (proposalId: number) => {
+    try {
+      const contract = await getPublicFundingContract();
+      const tx = await contract.releaseStageAmount(proposalId);
+      await tx.wait();
+      
+      showNotification(`Stage funds released for proposal #${proposalId}`);
+      await loadContractData();
+    } catch (err) {
+      console.error("Error releasing stage amount:", err);
+      setError("Failed to release funds. " + (err as Error).message);
+    }
+  };
+
+  const submitReport = async () => {
+    try {
+      if (selectedProposalForReport === null || selectedStageForReport === null) {
+        throw new Error("Please select a proposal and stage");
       }
-
+      
+      if (!stageReport) {
+        throw new Error("Report cannot be empty");
+      }
+      
       const contract = await getPublicFundingContract();
-      const tx = await contract.submitStageReport(proposalId, stageReport);
-
-      toast.success('Submitting stage report. Please wait for confirmation...');
+      const tx = await contract.submitStageReport(
+        selectedProposalForReport,
+        selectedStageForReport,
+        stageReport
+      );
       await tx.wait();
-      toast.success('Stage report submitted successfully!');
-
+      
+      showNotification(`Report submitted for proposal #${selectedProposalForReport} stage #${selectedStageForReport}`);
       setStageReport('');
-      await refreshProposalData(proposalId);
-    } catch (error) {
-      console.error('Submit stage report error:', error);
-      toast.error('Failed to submit stage report. Please try again.');
+      setSelectedProposalForReport(null);
+      setSelectedStageForReport(null);
+      await loadContractData();
+    } catch (err) {
+      console.error("Error submitting report:", err);
+      setError("Failed to submit report. " + (err as Error).message);
     }
   };
 
-  const handleApproveStage = async (proposalId: number) => {
+  const voteOnStage = async (proposalId: number, stageNumber: number, approve: boolean) => {
     try {
       const contract = await getPublicFundingContract();
-      const tx = await contract.approveStage(proposalId);
-
-      toast.success('Approving stage. Please wait for confirmation...');
+      const tx = await contract.voteOnStage(proposalId, stageNumber, approve);
       await tx.wait();
-      toast.success('Stage approved successfully!');
-
-      await refreshProposalData(proposalId);
-    } catch (error) {
-      console.error('Approve stage error:', error);
-      toast.error('Failed to approve stage. You may have already approved this stage.');
+      
+      showNotification(`Vote recorded for proposal #${proposalId} stage #${stageNumber}`);
+      await loadContractData();
+    } catch (err) {
+      console.error("Error voting on stage:", err);
+      setError("Failed to vote on stage. " + (err as Error).message);
     }
   };
 
-  const handleReleaseInitialFunds = async (proposalId: number) => {
+  const getStageInfo = async (proposalId: number, stageNumber: number) => {
     try {
       const contract = await getPublicFundingContract();
-      const tx = await contract.releaseInitialFunds(proposalId);
-
-      toast.success('Releasing initial funds. Please wait for confirmation...');
-      await tx.wait();
-      toast.success('Initial funds released successfully!');
-
-      await refreshProposalData(proposalId);
-      const newBalance = await contract.getTreasuryBalance();
-      setBalance(ethers.formatEther(newBalance));
-    } catch (error) {
-      console.error('Release initial funds error:', error);
-      toast.error('Failed to release initial funds. Please check requirements.');
+      const stageInfo = await contract.getStageInfo(proposalId, stageNumber);
+      
+      return {
+        amount: ethers.formatEther(stageInfo.amount),
+        report: stageInfo.report,
+        voteCount: stageInfo.voteCount.toNumber(),
+        state: mapStageStateToString(stageInfo.state)
+      };
+    } catch (err) {
+      console.error("Error getting stage info:", err);
+      setError("Failed to get stage info. " + (err as Error).message);
+      return null;
     }
   };
 
-  const handleReleaseNextStageFunds = async (proposalId: number) => {
-    try {
-      const contract = await getPublicFundingContract();
-      const tx = await contract.releaseNextStageFunds(proposalId);
-
-      toast.success('Releasing next stage funds. Please wait for confirmation...');
-      await tx.wait();
-      toast.success('Next stage funds released successfully!');
-
-      await refreshProposalData(proposalId);
-      const newBalance = await contract.getTreasuryBalance();
-      setBalance(ethers.formatEther(newBalance));
-    } catch (error) {
-      console.error('Release next stage funds error:', error);
-      toast.error('Failed to release next stage funds. Please check requirements.');
-    }
+  // Handle stage amount inputs
+  const updateStageAmount = (index: number, value: string) => {
+    const newStageAmounts = [...stageAmounts];
+    newStageAmounts[index] = value;
+    setStageAmounts(newStageAmounts);
   };
 
-  const refreshProposalData = async (proposalId: number) => {
-    try {
-      const contract = await getPublicFundingContract();
-      const proposal = await contract.proposals(proposalId);
-      const stageDetails = await contract.getProposalStageDetails(proposalId);
-
-      const updatedProposals = proposals.map(p =>
-        p.id === proposalId
-          ? {
-            ...p,
-            approvalCount: Number(proposal.approvalCount),
-            approved: proposal.approved,
-            executed: proposal.executed,
-            stageDetails: {
-              currentStage: Number(stageDetails.currentStage),
-              totalStages: Number(stageDetails.totalStages),
-              stageReport: stageDetails.stageReport,
-              stageApprovalCount: Number(stageDetails.stageApprovalCount),
-              stageLocked: stageDetails.stageLocked
-            }
-          }
-          : p
-      );
-      setProposals(updatedProposals);
-    } catch (error) {
-      console.error('Refresh proposal data error:', error);
-    }
+  // Check if total of stage amounts equals total amount
+  const validateStageAmounts = () => {
+    const total = stageAmounts
+      .slice(0, stageCount)
+      .filter(amount => !!amount)
+      .reduce((sum, amount) => sum + parseFloat(amount || '0'), 0);
+    
+    return Math.abs(total - parseFloat(proposalTotalAmount || '0')) < 0.0001;
   };
 
-  const getStatusColor = (proposal: Proposal) => {
-    if (proposal.executed) return 'text-green-600';
-    if (proposal.stageDetails?.currentStage === 1) return 'text-purple-600';
-    if (proposal.approved) return 'text-blue-600';
-    return 'text-orange-600';
-  };
-
-  const getStatusIcon = (proposal: Proposal) => {
-    if (proposal.executed) return <CheckCircle2 className="w-4 h-4 text-green-600" />;
-    if (proposal.stageDetails?.currentStage === 1) return <ArrowUpRight className="w-4 h-4 text-purple-600" />;
-    if (proposal.approved) return <CheckCircle2 className="w-4 h-4 text-blue-600" />;
-    return <Clock className="w-4 h-4 text-orange-600" />;
-  };
-
-  const renderStageActions = (proposal: Proposal) => {
-    if (!proposal.stageDetails) return null;
-    const { currentStage, stageLocked, stageApprovalCount } = proposal.stageDetails;
-
-    if (proposal.executed) return null;
-
-    if (currentStage === 0 && proposal.approved) {
-      return (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleReleaseInitialFunds(proposal.id)}
-          className="text-blue-600 hover:text-blue-700"
-        >
-          <Send className="w-4 h-4 mr-1" /> Release Initial Funds
-        </Button>
-      );
-    }
-
-    if (currentStage === 1) {
-      if (proposal.recipient.toLowerCase() === account.toLowerCase() && !stageLocked) {
-        return (
-          <div className="space-y-2">
-            <Textarea
-              placeholder="Enter stage completion report..."
-              value={stageReport}
-              onChange={(e) => setStageReport(e.target.value)}
-              className="min-h-[100px]"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleSubmitStageReport(proposal.id)}
-            >
-              <FileText className="w-4 h-4 mr-1" /> Submit Report
-            </Button>
-          </div>
-        );
-      }
-
-      if (isAuthority && stageLocked && stageApprovalCount < requiredApprovals) {
-        return (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleApproveStage(proposal.id)}
-          >
-            <CheckCircle2 className="w-4 h-4 mr-1" /> Approve Stage
-          </Button>
-        );
-      }
-
-      if (stageApprovalCount >= requiredApprovals) {
-        return (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleReleaseNextStageFunds(proposal.id)}
-            className="text-green-600 hover:text-green-700"
-          >
-            <Send className="w-4 h-4 mr-1" /> Release Final Funds
-          </Button>
-        );
-      }
-    }
-
-    return null;
-  };
-
-  const validateDeposit = (amount: string): boolean => {
-    if (!amount || amount.trim() === '') {
-      setErrors(prev => ({ ...prev, deposit: 'Amount is required' }));
-      return false;
-    }
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      setErrors(prev => ({ ...prev, deposit: 'Please enter a valid positive amount' }));
-      return false;
-    }
-    try {
-      ethers.parseEther(amount);
-    } catch (error) {
-      setErrors(prev => ({ ...prev, deposit: 'Invalid ETH amount' }));
-      return false;
-    }
-    setErrors(prev => ({ ...prev, deposit: '' }));
-    return true;
-  };
+  // UI Rendering
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-lg">Loading Public Fund Management System...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto p-4 space-y-8">
-        <div className="bg-white rounded-lg shadow-sm p-6 flex items-center justify-between">
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold mb-4">Public Fund Management</h1>
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Public Fund Treasury
-            </h1>
-            <p className="text-gray-500 mt-2">Decentralized Fund Management System</p>
+            <p className="text-gray-600">Contract Balance: <span className="font-bold">{contractBalance} ETH</span></p>
+            <p className="text-gray-600">Connected Account: <span className="font-mono">{account || 'Not connected'}</span></p>
+            <p className="text-gray-600">
+              Role: <span className="font-bold">
+                {isAdmin ? 'Admin' : isAuthority ? 'Authority' : 'Public User'}
+              </span>
+            </p>
           </div>
-          <div className="text-right">
-            <div className="px-4 py-2 bg-gray-100 rounded-lg">
-              <p className="text-sm text-gray-600">Connected Account</p>
-              <p className="font-mono text-sm">{account.slice(0, 6)}...{account.slice(-4)}</p>
+          <button 
+            onClick={() => loadContractData()}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
+          >
+            Refresh Data
+          </button>
+        </div>
+      </header>
+
+      {/* Notification */}
+      {notification && (
+        <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+          {notification}
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+          <div className="flex justify-between">
+            <p>{error}</p>
+            <button onClick={() => setError('')} className="font-bold">×</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="mb-6 border-b">
+        <nav className="flex flex-wrap -mb-px">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`mr-2 py-2 px-4 ${activeTab === 'dashboard' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600 hover:text-gray-800'}`}
+          >
+            Dashboard
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`mr-2 py-2 px-4 ${activeTab === 'admin' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              Admin Panel
+            </button>
+          )}
+          {isAuthority && (
+            <button
+              onClick={() => setActiveTab('authority')}
+              className={`mr-2 py-2 px-4 ${activeTab === 'authority' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              Authority Panel
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab('proposals')}
+            className={`mr-2 py-2 px-4 ${activeTab === 'proposals' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600 hover:text-gray-800'}`}
+          >
+            Proposals
+          </button>
+          {proposals.some(p => p.state === 'PublicVoting') && (
+            <button
+              onClick={() => setActiveTab('voting')}
+              className={`mr-2 py-2 px-4 ${activeTab === 'voting' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              Public Voting
+            </button>
+          )}
+          {proposals.some(p => p.state === 'InProgress') && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`mr-2 py-2 px-4 ${activeTab === 'reports' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              Stage Reports
+            </button>
+          )}
+        </nav>
+      </div>
+
+      {/* Dashboard Tab */}
+      {activeTab === 'dashboard' && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">System Overview</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-2">Contract Balance</h3>
+              <p className="text-3xl font-bold">{contractBalance} ETH</p>
             </div>
-            <div className="mt-2 px-4 py-2 bg-green-50 rounded-lg">
-              <p className="text-sm text-gray-600">Treasury Balance</p>
-              <p className="font-bold text-green-700">{balance} ETH</p>
+            
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-2">Total Proposals</h3>
+              <p className="text-3xl font-bold">{proposals.length}</p>
+            </div>
+            
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold mb-2">Active Proposals</h3>
+              <p className="text-3xl font-bold">
+                {proposals.filter(p => 
+                  p.state !== 'Rejected' && p.state !== 'Completed'
+                ).length}
+              </p>
+            </div>
+          </div>
+
+          <h3 className="text-xl font-semibold mb-4">Proposal Status Summary</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full bg-white border border-gray-200">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="py-2 px-4 border">Status</th>
+                  <th className="py-2 px-4 border">Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(['Created', 'UnderAuthorityVoting', 'PublicVoting', 'Approved', 'InProgress', 'Rejected', 'Completed'] as ProposalState[]).map(state => (
+                  <tr key={state}>
+                    <td className="py-2 px-4 border">{state}</td>
+                    <td className="py-2 px-4 border text-center">
+                      {proposals.filter(p => p.state === state).length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Panel Tab */}
+      {activeTab === 'admin' && isAdmin && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-6">Admin Panel</h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Manage Authorities */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-xl font-semibold mb-4">Manage Authorities</h3>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">Add New Authority</label>
+                <div className="flex">
+                  <input
+                    type="text"
+                    value={newAuthorityAddress}
+                    onChange={(e) => setNewAuthorityAddress(e.target.value)}
+                    placeholder="Ethereum address"
+                    className="flex-1 p-2 border rounded-l"
+                  />
+                  <button
+                    onClick={addAuthority}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-r hover:bg-blue-600"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+              
+              {/* List of authorities would be displayed here if we had a function to get them */}
+              <p className="text-sm text-gray-600">
+                Note: Authority list is not available from the contract directly.
+              </p>
+            </div>
+            
+            {/* Manage Funds */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-xl font-semibold mb-4">Manage Funds</h3>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">Deposit Funds</label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    placeholder="Amount in ETH"
+                    className="flex-1 p-2 border rounded-l"
+                  />
+                  <button
+                    onClick={depositFunds}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-r hover:bg-blue-600"
+                  >
+                    Deposit
+                  </button>
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">Withdraw Funds</label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder="Amount in ETH"
+                    className="flex-1 p-2 border rounded-l"
+                  />
+                  <button
+                    onClick={withdrawFunds}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-r hover:bg-blue-600"
+                  >
+                    Withdraw
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        <Tabs defaultValue="home" className="w-full">
-          <TabsList className="flex w-full rounded-full bg-white shadow-sm border border-gray-100 p-0 mb-16">
-            <TabsTrigger
-              value="home"
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 text-gray-500 hover:text-gray-800 transition-colors data-[state=active]:text-black data-[state=active]:bg-gray-50 data-[state=active]:border-b-2 data-[state=active]:border-black data-[state=active]:shadow-none rounded-l-full"
-            >
-              <Home className="w-4 h-4" />
-              <span className="font-medium">Home</span>
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="proposals"
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 text-gray-500 hover:text-gray-800 transition-colors data-[state=active]:text-black data-[state=active]:bg-gray-50 data-[state=active]:border-b-2 data-[state=active]:border-black data-[state=active]:shadow-none"
-            >
-              <Send className="w-4 h-4" />
-              <span className="font-medium">Proposals</span>
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="deposit"
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 text-gray-500 hover:text-gray-800 transition-colors data-[state=active]:text-black data-[state=active]:bg-gray-50 data-[state=active]:border-b-2 data-[state=active]:border-black data-[state=active]:shadow-none"
-            >
-              <Wallet className="w-4 h-4" />
-              <span className="font-medium">Deposit</span>
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="authorities"
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 text-gray-500 hover:text-gray-800 transition-colors data-[state=active]:text-black data-[state=active]:bg-gray-50 data-[state=active]:border-b-2 data-[state=active]:border-black data-[state=active]:shadow-none rounded-r-full"
-            >
-              <Users className="w-4 h-4" />
-              <span className="font-medium">Authorities</span>
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="home">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-blue-600" />
-                    Welcome to Public Fund Treasury
-                  </CardTitle>
-                  <CardDescription>
-                    A decentralized system for transparent fund management
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-gray-600">
-                    The Public Fund Treasury is a decentralized application that enables transparent and secure management of funds through a multi-signature approval system.
-                  </p>
-                  <div className="space-y-4 mt-6">
-                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                      <CircleDollarSign className="w-6 h-6 text-green-600 mt-1" />
-                      <div>
-                        <h3 className="font-semibold">Deposit Funds</h3>
-                        <p className="text-sm text-gray-600">Anyone can contribute ETH to the treasury</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                      <Send className="w-6 h-6 text-blue-600 mt-1" />
-                      <div>
-                        <h3 className="font-semibold">Submit Proposals</h3>
-                        <p className="text-sm text-gray-600">Create proposals to allocate funds to specific purposes</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                      <FileCheck className="w-6 h-6 text-purple-600 mt-1" />
-                      <div>
-                        <h3 className="font-semibold">Multi-Signature Approval</h3>
-                        <p className="text-sm text-gray-600">Proposals require multiple authority approvals</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <UserCheck className="w-5 h-5 text-green-600" />
-                    Current Status
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-blue-600">Total Authorities</p>
-                      <p className="text-2xl font-bold text-blue-700">{authorities.length}</p>
-                    </div>
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <p className="text-sm text-green-600">Required Approvals</p>
-                      <p className="text-2xl font-bold text-green-700">{requiredApprovals}</p>
-                    </div>
-                    <div className="p-4 bg-purple-50 rounded-lg">
-                      <p className="text-sm text-purple-600">Total Proposals</p>
-                      <p className="text-2xl font-bold text-purple-700">{proposals.length}</p>
-                    </div>
-                    <div className="p-4 bg-orange-50 rounded-lg">
-                      <p className="text-sm text-orange-600">Active Proposals</p>
-                      <p className="text-2xl font-bold text-orange-700">
-                        {proposals.filter(p => !p.executed).length}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6">
-                    <h3 className="font-semibold mb-2">Your Role</h3>
-                    <div className="space-y-2">
-                      {isOwner && (
-                        <div className="flex items-center gap-2 text-blue-600 bg-blue-50 p-2 rounded">
-                          <Shield className="w-4 h-4" />
-                          <span>Contract Owner</span>
-                        </div>
-                      )}
-                      {isAuthority && (
-                        <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded">
-                          <UserCheck className="w-4 h-4" />
-                          <span>Authority Member</span>
-                        </div>
-                      )}
-                      {!isOwner && !isAuthority && (
-                        <div className="flex items-center gap-2 text-gray-600 bg-gray-50 p-2 rounded">
-                          <Users className="w-4 h-4" />
-                          <span>Regular User</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="proposals">
-            <Card className="bg-white">
-              <CardHeader className="border-b border-gray-100 bg-gray-50">
-                <CardTitle className="flex items-center gap-3 text-2xl">
-                  <div className="p-2 bg-black rounded-lg">
-                    <Send className="w-6 h-6 text-white" />
-                  </div>
-                  Create New Proposal
-                </CardTitle>
-                <CardDescription className="text-gray-600 text-base">
-                  Submit a new funding proposal for approval by the authorities
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-8">
-                <div className="w-full space-y-8">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                      <Label htmlFor="description" className="text-lg font-semibold">
-                        Proposal Description
-                      </Label>
-                      <div className="space-y-1">
-                        <Input
-                          id="description"
-                          value={proposalDescription}
-                          onChange={(e) => setProposalDescription(e.target.value)}
-                          placeholder="Describe the purpose of this proposal"
-                          className="h-14 text-lg border-2 border-gray-200 focus:border-black focus:ring-black"
-                        />
-                        {errors.proposal.description && (
-                          <p className="text-red-500 text-sm flex items-center gap-1">
-                            <AlertCircle className="w-4 h-4" />
-                            {errors.proposal.description}
-                          </p>
-                        )}
-                      </div>
-                      <p className="text-gray-500 text-sm">
-                        Provide a clear and detailed description of your funding request
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="amount" className="text-lg font-semibold">
-                          Amount
-                        </Label>
-                        <div className="relative">
-                          <Input
-                            id="amount"
-                            type="number"
-                            value={proposalAmount}
-                            onChange={(e) => setProposalAmount(e.target.value)}
-                            placeholder="0.0"
-                            className={`h-14 text-lg pr-16 border-2 ${errors.proposal.amount
-                              ? 'border-red-300 focus:border-red-500'
-                              : 'border-gray-200 focus:border-black'
-                              } focus:ring-black`}
-                          />
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
-                            ETH
-                          </div>
-                        </div>
-                        {errors.proposal.amount && (
-                          <p className="text-red-500 text-sm flex items-center gap-1">
-                            <AlertCircle className="w-4 h-4" />
-                            {errors.proposal.amount}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="recipient" className="text-lg font-semibold">
-                          Recipient
-                        </Label>
-                        <div className="space-y-1">
-                          <Input
-                            id="recipient"
-                            value={proposalRecipient}
-                            onChange={(e) => setProposalRecipient(e.target.value)}
-                            placeholder="0x..."
-                            className={`h-14 text-lg font-mono border-2 ${errors.proposal.recipient
-                              ? 'border-red-300 focus:border-red-500'
-                              : 'border-gray-200 focus:border-black'
-                              } focus:ring-black`}
-                          />
-                          {errors.proposal.recipient && (
-                            <p className="text-red-500 text-sm flex items-center gap-1">
-                              <AlertCircle className="w-4 h-4" />
-                              {errors.proposal.recipient}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-gray-100">
-                    <Button
-                      onClick={handleSubmitProposal}
-                      className="h-14 text-lg bg-black hover:bg-gray-900 transition-colors"
-                      disabled={isLoading || Object.values(errors.proposal).some(error => !!error)}
-                    >
-
-                      {isLoading ? (
-                        <div className="flex items-center gap-3">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          Processing Proposal...
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Send className="w-5 h-5" />
-                          Submit Proposal
-                        </div>
-                      )}
-                    </Button>
-                  </div>
+      {/* Authority Panel Tab */}
+      {activeTab === 'authority' && isAuthority && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-6">Authority Panel</h2>
+          
+          {/* Create Proposal Form */}
+          <div className="bg-white p-6 rounded-lg shadow mb-8">
+            <h3 className="text-xl font-semibold mb-4">Create New Proposal</h3>
+            
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-gray-700 mb-2">Description</label>
+                <textarea
+                  value={proposalDescription}
+                  onChange={(e) => setProposalDescription(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  rows={3}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Recipient Address</label>
+                <input
+                  type="text"
+                  value={proposalRecipient}
+                  onChange={(e) => setProposalRecipient(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  placeholder="0x..."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Total Amount (ETH)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={proposalTotalAmount}
+                  onChange={(e) => setProposalTotalAmount(e.target.value)}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-gray-700 mb-2">Number of Stages</label>
+                <select
+                  value={stageCount}
+                  onChange={(e) => setStageCount(parseInt(e.target.value))}
+                  className="w-full p-2 border rounded"
+                >
+                  <option value={1}>1 Stage</option>
+                  <option value={2}>2 Stages</option>
+                  <option value={3}>3 Stages</option>
+                </select>
+              </div>
+              
+              {Array.from({ length: stageCount }).map((_, index) => (
+                <div key={index}>
+                  <label className="block text-gray-700 mb-2">Stage {index + 1} Amount (ETH)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={stageAmounts[index]}
+                    onChange={(e) => updateStageAmount(index, e.target.value)}
+                    className="w-full p-2 border rounded"
+                  />
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>Active Proposals</CardTitle>
-                <CardDescription>View and manage current funding proposals</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead>ID</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Recipient</TableHead>
-                        <TableHead>Approvals</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {proposals.map((proposal) => (
-                        <TableRow key={proposal.id}>
-                          <TableCell className="font-mono">#{proposal.id}</TableCell>
-
-                          <TableCell className="max-w-xs break-words">
-                            <div className="space-y-1">
-                              <p className="whitespace-normal">{proposal.description}</p>
-                              {proposal.stageDetails?.stageReport && (
-                                <div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-xs text-blue-600 p-0 h-auto hover:bg-transparent hover:underline"
-                                    onClick={() => openReportModal(proposal.stageDetails?.stageReport, proposal?.id)}
-                                  >
-                                    See Report Details
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-
-                          <TableCell className="font-mono">{parseFloat(proposal.amount).toFixed(4)} ETH</TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {proposal.recipient.slice(0, 6)}...{proposal.recipient.slice(-4)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <span className="font-bold">{proposal.approvalCount}</span>
-                              <span className="text-gray-500">/ {requiredApprovals}</span>
-                              {proposal.stageDetails?.currentStage === 1 && (
-                                <div className="ml-2 text-sm text-purple-600">
-                                  Stage: {proposal.stageDetails.stageApprovalCount}/{requiredApprovals}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(proposal)}
-                              <span className={getStatusColor(proposal)}>
-                                {proposal.executed
-                                  ? 'Executed'
-                                  : proposal.stageDetails?.currentStage === 1
-                                    ? `Stage ${proposal.stageDetails.currentStage}`
-                                    : proposal.approved
-                                      ? 'Approved'
-                                      : 'Pending'}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-gray-500 text-sm">
-                            {format(proposal.createdAt * 1000, 'MMM d, yyyy')}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-2">
-                              {!proposal.executed && !proposal.approved && isAuthority && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleVote(proposal.id)}
-                                >
-                                  <Vote className="w-4 h-4 mr-1" /> Vote
-                                </Button>
-                              )}
-                              {renderStageActions(proposal)}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="deposit">
-            <Card className="bg-white">
-              <CardHeader className="border-b border-gray-100 bg-gray-50">
-                <CardTitle className="flex items-center gap-3 text-2xl">
-                  <div className="p-2 bg-black rounded-lg">
-                    <Wallet className="w-6 h-6 text-white" />
-                  </div>
-                  Deposit Funds
-                </CardTitle>
-                <CardDescription className="text-gray-600 text-base">
-                  Contribute ETH to the public treasury
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-8">
-                <div className="max-w-2xl mx-auto">
-                  <div className="p-6 bg-gradient-to-br from-gray-50 to-white rounded-xl border-2 border-gray-100">
-                    <div className="text-center mb-8">
-                      <BadgeDollarSign className="w-16 h-16 text-black mx-auto mb-4" />
-                      <h3 className="text-2xl font-semibold text-gray-900 mb-2">
-                        Current Treasury Balance
-                      </h3>
-                      <p className="text-4xl font-bold text-black">
-                        {parseFloat(balance).toFixed(4)} ETH
-                      </p>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="space-y-2">
-                        <Label htmlFor="depositAmount" className="text-lg font-semibold">
-                          Amount to Deposit
-                        </Label>
-                        <div className="relative">
-                          <Input
-                            id="depositAmount"
-                            type="number"
-                            placeholder="0.0"
-                            value={depositAmount}
-                            onChange={(e) => {
-                              setDepositAmount(e.target.value);
-                              validateDeposit(e.target.value);
-                            }}
-                            className={`h-14 text-lg pr-16 border-2 ${errors.deposit
-                              ? 'border-red-300 focus:border-red-500'
-                              : 'border-gray-200 focus:border-black'
-                              } focus:ring-black`}
-                          />
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-gray-100 px-2 py-1 rounded text-gray-600 font-medium">
-                            ETH
-                          </div>
-                        </div>
-                        {errors.deposit && (
-                          <p className="text-red-500 text-sm flex items-center gap-1 mt-1">
-                            <AlertCircle className="w-4 h-4" />
-                            {errors.deposit}
-                          </p>
-                        )}
-                      </div>
-
-                      <Button
-                        onClick={handleDeposit}
-                        className="w-full h-14 text-lg bg-black hover:bg-gray-900 transition-colors"
-                        disabled={isLoading || !!errors.deposit}
-                      >
-                        {isLoading ? (
-                          <div className="flex items-center gap-3">
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                            Processing Deposit...
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Wallet className="w-5 h-5" />
-                            Deposit Funds
-                          </div>
-                        )}
-                      </Button>
-
-                      <div className="grid grid-cols-2 gap-4 mt-8 text-center">
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">Your Address</p>
-                          <p className="font-mono text-sm">
-                            {account.slice(0, 6)}...{account.slice(-4)}
-                          </p>
-                        </div>
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">Network</p>
-                          <p className="font-medium">Ethereum Mainnet</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="authorities">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {isOwner && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Authority Management</CardTitle>
-                    <CardDescription>Add new authorities and update approval requirements</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="newAuthority">New Authority Address</Label>
-                        <Input
-                          id="newAuthority"
-                          value={newAuthority}
-                          onChange={(e) => setNewAuthority(e.target.value)}
-                          placeholder="0x..."
-                        />
-                      </div>
-                      <Button onClick={handleAddAuthority} className="w-full">
-                        <Users className="w-4 h-4 mr-2" /> Add Authority
-                      </Button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="requiredApprovals">Required Approvals</Label>
-                        <Input
-                          id="requiredApprovals"
-                          type="number"
-                          value={newRequiredApprovals}
-                          onChange={(e) => setNewRequiredApprovals(e.target.value)}
-                          placeholder={requiredApprovals.toString()}
-                        />
-                      </div>
-                      <Button
-                        onClick={handleUpdateRequiredApprovals}
-                        className="w-full"
-                        variant="outline"
-                      >
-                        <Settings className="w-4 h-4 mr-2" /> Update Required Approvals
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+              ))}
+              
+              <button
+                onClick={createProposal}
+                disabled={!validateStageAmounts()}
+                className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
+              >
+                Create Proposal
+              </button>
+              
+              {!validateStageAmounts() && proposalTotalAmount && (
+                <p className="text-red-500 text-sm">
+                  Stage amounts must sum to the total amount
+                </p>
               )}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Current Authorities</CardTitle>
-                  <CardDescription>
-                    Active authorities ({authorities.length}) • Required Approvals: {requiredApprovals}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {authorities.map((authority, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-blue-600" />
-                          <span className="font-mono text-sm">{authority}</span>
-                          {authority.toLowerCase() === account.toLowerCase() && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                              You
-                            </span>
-                          )}
-                        </div>
-                        {isOwner && authority.toLowerCase() !== account.toLowerCase() && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveAuthority(authority)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+          </div>
+          
+          {/* Authority Voting Section */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-xl font-semibold mb-4">Proposals Requiring Authority Vote</h3>
+            
+            {proposals
+              .filter(p => p.state === 'UnderAuthorityVoting')
+              .map(proposal => (
+                <div key={proposal.id} className="border-b last:border-b-0 py-4">
+                  <h4 className="font-semibold mb-2">Proposal #{proposal.id}</h4>
+                  <p className="mb-2">{proposal.description}</p>
+                  <p className="text-gray-600 mb-2">Amount: {proposal.totalAmount} ETH</p>
+                  <p className="text-gray-600 mb-2">Yes Votes: {proposal.authorityYesVotes}</p>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => authorityVote(proposal.id, true)}
+                      className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                    >
+                      Vote Yes
+                    </button>
+                    <button
+                      onClick={() => authorityVote(proposal.id, false)}
+                      className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+                    >
+                      Vote No
+                    </button>
+                  </div>
+                </div>
+              ))}
+            
+            {!proposals.some(p => p.state === 'UnderAuthorityVoting') && (
+              <p className="text-gray-600">No proposals currently require authority voting.</p>
+            )}
+          </div>
+        </div>
+      )}
 
-      {/*See Report deails Dailog Box*/}
-      <Dialog open={reportModalOpen} onOpenChange={setReportModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Stage Report of Proposal #{stageReportId}</DialogTitle>
-          </DialogHeader>
-          <div className="p-4 bg-gray-50 rounded-md">
-            <p className="whitespace-pre-wrap">{selectedReport}</p>
+      {/* Proposals Tab */}
+      {activeTab === 'proposals' && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-6">All Proposals</h2>
+          
+          <div className="space-y-6">
+            {proposals.map(proposal => (
+              <div key={proposal.id} className="bg-white p-6 rounded-lg shadow">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-xl font-semibold">Proposal #{proposal.id}</h3>
+                  <span className={`px-3 py-1 rounded text-sm ${
+                    proposal.state === 'Completed' ? 'bg-green-100 text-green-800' :
+                    proposal.state === 'Rejected' ? 'bg-red-100 text-red-800' :
+                    'bg-blue-100 text-blue-800'
+                  }`}>
+                    {proposal.state}
+                  </span>
+                </div>
+                
+                <p className="mb-4">{proposal.description}</p>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-gray-600">Recipient</p>
+                    <p className="font-mono text-sm">{proposal.recipient}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Total Amount</p>
+                    <p className="font-semibold">{proposal.totalAmount} ETH</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Current Stage</p>
+                    <p className="font-semibold">{proposal.currentStage + 1} of {proposal.totalStages}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Votes</p>
+                    <p className="font-semibold">
+                      Yes: {proposal.publicYesVotes} / No: {proposal.publicNoVotes}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Admin Actions */}
+                {isAdmin && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="font-semibold mb-2">Admin Actions</h4>
+                    <div className="flex gap-2">
+                      {proposal.state === 'PublicVoting' && (
+                        <button
+                          onClick={() => closePublicVoting(proposal.id)}
+                          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                        >
+                          Close Public Voting
+                        </button>
+                      )}
+                      {(proposal.state === 'Approved' || proposal.state === 'InProgress') && (
+                        <button
+                          onClick={() => releaseStageAmount(proposal.id)}
+                          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                        >
+                          Release Next Stage
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {proposals.length === 0 && (
+              <p className="text-gray-600">No proposals have been created yet.</p>
+            )}
           </div>
-          <div className="mt-4 flex justify-end">
-            <Button variant="outline" onClick={() => setReportModalOpen(false)}>
-              Close
-            </Button>
+        </div>
+      )}
+
+      {/* Public Voting Tab */}
+      {activeTab === 'voting' && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-6">Public Voting</h2>
+          
+          <div className="space-y-6">
+            {proposals
+              .filter(p => p.state === 'PublicVoting')
+              .map(proposal => (
+                <div key={proposal.id} className="bg-white p-6 rounded-lg shadow">
+                  <h3 className="text-xl font-semibold mb-4">Proposal #{proposal.id}</h3>
+                  <p className="mb-4">{proposal.description}</p>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <p className="text-gray-600">Amount Requested</p>
+                      <p className="font-semibold">{proposal.totalAmount} ETH</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-600">Current Votes</p>
+                      <p className="font-semibold">
+                        Yes: {proposal.publicYesVotes} / No: {proposal.publicNoVotes}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <label className="block text-gray-700 mb-2">Your Comment</label>
+                    <textarea
+                      value={publicVoteComment}
+                      onChange={(e) => setPublicVoteComment(e.target.value)}
+                      className="w-full p-2 border rounded"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => publicVote(proposal.id, true)}
+                      className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                    >
+                      Vote Yes
+                    </button>
+                    <button
+                      onClick={() => publicVote(proposal.id, false)}
+                      className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+                    >
+                      Vote No
+                    </button>
+                  </div>
+                </div>
+              ))}
+            
+            {!proposals.some(p => p.state === 'PublicVoting') && (
+              <p className="text-gray-600">No proposals are currently open for public voting.</p>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
+
+      {/* Stage Reports Tab */}
+      {activeTab === 'reports' && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-6">Stage Reports</h2>
+          
+          {/* Submit Report Form */}
+          {proposals.some(p => p.state === 'InProgress') && (
+            <div className="bg-white p-6 rounded-lg shadow mb-8">
+              <h3 className="text-xl font-semibold mb-4">Submit Stage Report</h3>
+              
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-gray-700 mb-2">Select Proposal</label>
+                  <select
+                    value={selectedProposalForReport || ''}
+                    onChange={(e) => setSelectedProposalForReport(parseInt(e.target.value))}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="">Choose a proposal...</option>
+                    {proposals
+                      .filter(p => p.state === 'InProgress')
+                      .map(p => (
+                        <option key={p.id} value={p.id}>
+                          Proposal #{p.id} - Stage {p.currentStage + 1}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                
+                {selectedProposalForReport !== null && (
+                  <>
+                    <div>
+                      <label className="block text-gray-700 mb-2">Stage Report</label>
+                      <textarea
+                        value={stageReport}
+                        onChange={(e) => setStageReport(e.target.value)}
+                        className="w-full p-2 border rounded"
+                        rows={4}
+                        placeholder="Describe the progress and use of funds for this stage..."
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={submitReport}
+                      className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600"
+                    >
+                      Submit Report
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* List of Reports */}
+          <div className="space-y-6">
+            {proposals
+              .filter(p => p.state === 'InProgress')
+              .map(proposal => (
+                <div key={proposal.id} className="bg-white p-6 rounded-lg shadow">
+                  <h3 className="text-xl font-semibold mb-4">
+                    Proposal #{proposal.id} - Stage {proposal.currentStage} of {proposal.totalStages}
+                  </h3>
+                  
+                  {/* Stage details would be loaded dynamically */}
+                  <p className="text-gray-600 mb-4">
+                    Loading stage details...
+                  </p>
+                  
+                  {isAuthority && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => voteOnStage(proposal.id, proposal.currentStage - 1, true)}
+                        className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                      >
+                        Approve Stage
+                      </button>
+                      <button
+                        onClick={() => voteOnStage(proposal.id, proposal.currentStage - 1, false)}
+                        className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+                      >
+                        Reject Stage
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
-
   );
 }
