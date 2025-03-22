@@ -140,3 +140,4 @@ watchdog==6.0.0
 yarl==1.18.3
 zstandard==0.23.0
 dj-database-url>=2.0.0
+gunicorn==21.2.0
