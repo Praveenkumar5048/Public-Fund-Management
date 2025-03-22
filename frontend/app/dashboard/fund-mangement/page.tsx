@@ -41,6 +41,8 @@ export default function PublicFundManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notification, setNotification] = useState('');
+  
+  const [stageInfoMap, setStageInfoMap] = useState<{[key: string]: Stage | null}>({});
 
   // Form states
   const [newAuthorityAddress, setNewAuthorityAddress] = useState('');
@@ -95,6 +97,32 @@ export default function PublicFundManagement() {
       }
     };
   }, []);
+  
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      proposals
+        .filter(p => p.state === 'InProgress')
+        .forEach(p => {
+          loadStageInfo(p.id, p.currentStage - 1);
+        });
+    }
+  }, [activeTab, proposals]);
+
+  const loadStageInfo = async (proposalId: number, stageNumber: number) => {
+    const key = `${proposalId}-${stageNumber}`;
+    
+    // Check if we already have this info
+    if (stageInfoMap[key]) return;
+    
+    const info = await getStageInfo(proposalId, stageNumber);
+    
+    if (info) {
+      setStageInfoMap(prev => ({
+        ...prev,
+        [key]: info
+      }));
+    }
+  };
 
   // Check if user is admin or authority
   const checkRoles = async (address: string) => {
@@ -353,6 +381,8 @@ export default function PublicFundManagement() {
   const submitReport = async () => {
     try {
       if (selectedProposalForReport === null || selectedStageForReport === null) {
+        console.log("selectedProposalForReport", selectedProposalForReport);
+        console.log("selectedStageForReport", selectedStageForReport);
         throw new Error("Please select a proposal and stage");
       }
 
@@ -401,7 +431,7 @@ export default function PublicFundManagement() {
       return {
         amount: ethers.formatEther(stageInfo.amount),
         report: stageInfo.report,
-        voteCount: stageInfo.voteCount.toNumber(),
+        voteCount: stageInfo.voteCount.toString(),
         state: mapStageStateToString(stageInfo.state)
       };
     } catch (err) {
@@ -817,13 +847,19 @@ export default function PublicFundManagement() {
                   </div>
                   <div>
                     <p className="text-gray-600">Current Stage</p>
-                    <p className="font-semibold">{proposal.currentStage + 1} of {proposal.totalStages}</p>
+                    <p className="font-semibold">{proposal.currentStage} of {proposal.totalStages}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Votes</p>
                     <p className="font-semibold">
                       Yes: {proposal.publicYesVotes} / No: {proposal.publicNoVotes}
                     </p>
+                  </div>
+                  <div>
+                    <a href={`/dashboard/fund-mangement/${proposal.id}`}
+                       className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                      View
+                    </a>
                   </div>
                 </div>
 
@@ -935,16 +971,22 @@ export default function PublicFundManagement() {
                 <div>
                   <label className="block text-gray-700 mb-2">Select Proposal</label>
                   <select
-                    value={selectedProposalForReport || ''}
-                    onChange={(e) => setSelectedProposalForReport(parseInt(e.target.value))}
+                    value={selectedProposalForReport !== null ? selectedProposalForReport.toString() : ''}
+                    onChange={(e) => {
+                      const selectedId = e.target.value ? parseInt(e.target.value) : null;
+                      setSelectedProposalForReport(selectedId);
+                      // Set the selected stage for report based on the current stage of the selected proposal
+                      const selectedProposal = proposals.find(p => p.id === selectedId);
+                      setSelectedStageForReport(selectedProposal ? selectedProposal.currentStage-1: null);
+                    }}
                     className="w-full p-2 border rounded"
                   >
                     <option value="">Choose a proposal...</option>
                     {proposals
                       .filter(p => p.state === 'InProgress')
                       .map(p => (
-                        <option key={p.id} value={p.id}>
-                          Proposal #{p.id} - Stage {p.currentStage + 1}
+                        <option key={p.id} value={p.id} >
+                          Proposal #{p.id} - Stage {p.currentStage}
                         </option>
                       ))}
                   </select>
@@ -986,9 +1028,44 @@ export default function PublicFundManagement() {
                   </h3>
 
                   {/* Stage details would be loaded dynamically */}
-                  <p className="text-gray-600 mb-4">
-                    Loading stage details...
-                  </p>
+                 {/* Stage details */}
+                  <div>
+                    {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`] ? (
+                      <div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                          <div>
+                            <p className="text-gray-600">Stage Amount</p>
+                            <p className="font-semibold">
+                              {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.amount} ETH
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">State</p>
+                            <p className="font-semibold">
+                              {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.state}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">Approval Votes</p>
+                            <p className="font-semibold">
+                              {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.voteCount}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="mb-4">
+                          <p className="text-gray-600">Stage Report</p>
+                          <p className="p-3 bg-gray-50 rounded border">
+                            {stageInfoMap[`${proposal.id}-${proposal.currentStage - 1}`]?.report || 'No report submitted yet'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-gray-600 mb-4">
+                        Loading stage details...
+                      </p>
+                    )}
+                  </div>
 
                   {isAuthority && (
                     <div className="flex gap-2">
