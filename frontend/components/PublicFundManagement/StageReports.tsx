@@ -19,6 +19,10 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
   const [stageReportFile, setStageReportFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [stageInfoMap, setStageInfoMap] = useState<{[key: string]: Stage | null}>({});
+  const [aiReviewStatus, setAiReviewStatus] = useState<string | null>(null);
+  const [aiReviewLoading, setAiReviewLoading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<'idle' | 'ipfs' | 'ai-review' | 'blockchain'>('idle');
+  const [ipfsCid, setIpfsCid] = useState<string | null>(null);
   
 
   useEffect(() => {
@@ -65,7 +69,9 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
       }
   
       setIsUploading(true);
-  
+      
+      // First, upload to IPFS
+      setUploadStage('ipfs');
       const formData = new FormData();
       formData.append('file', stageReportFile);
       
@@ -77,25 +83,68 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
         },
       });
       
-      const ipfsCid = response.data.IpfsHash;
+      const uploadedIpfsCid = response.data.IpfsHash;
+      setIpfsCid(uploadedIpfsCid);
+      
+      // Then send to AI for review
+      setUploadStage('ai-review');
+      setAiReviewLoading(true);
+      showNotification("Your document is being reviewed by our AI agent...");
+      
+      const aiFormData = new FormData();
+      aiFormData.append('file', stageReportFile);
+      
+      try {
+        const aiResponse = await axios.post('http://192.168.137.89:8000/analyze/', aiFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        setAiReviewStatus(aiResponse.data.status);
+        
+        // If not approved, stop the process
+        if (aiResponse.data.status !== "APPROVED") {
+          showNotification(`AI Review Result: ${aiResponse.data.status} - Document uploaded to IPFS but not submitted to blockchain`);
+          setAiReviewLoading(false);
+          setIsUploading(false);
+          setUploadStage('idle');
+          return;
+        }
+      } catch (aiErr) {
+        console.error("Error during AI review:", aiErr);
+        onError("AI review failed. Document uploaded to IPFS but not submitted to blockchain.");
+        setAiReviewLoading(false);
+        setIsUploading(false);
+        setUploadStage('idle');
+        return;
+      }
+      
+      setAiReviewLoading(false);
+      
+      // If approved by AI, proceed to blockchain submission
+      setUploadStage('blockchain');
       
       const contract = await getPublicFundingContract();
       const tx = await contract.submitStageReport(
         selectedProposalForReport,
         selectedStageForReport,
-        ipfsCid
+        uploadedIpfsCid
       );
       await tx.wait();
   
-      showNotification(`Report submitted for proposal #${selectedProposalForReport} stage #${selectedStageForReport}`);
+      showNotification(`Report uploaded to IPFS, approved by AI, and submitted to blockchain for proposal #${selectedProposalForReport} stage #${selectedStageForReport}`);
       setStageReportFile(null);
       setSelectedProposalForReport(null);
       setSelectedStageForReport(null);
+      setAiReviewStatus(null);
+      setIpfsCid(null);
     } catch (err) {
       console.error("Error submitting report:", err);
       onError("Failed to submit report. " + (err as Error).message);
     } finally {
       setIsUploading(false);
+      setUploadStage('idle');
     }
   };
 
@@ -142,6 +191,80 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
     return states[state];
   };
 
+  const renderUploadStageIndicator = () => {
+    if (!isUploading) return null;
+    
+    return (
+      <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+        <div className="flex items-center mb-4">
+          <div className="w-full">
+            <div className="relative pt-1">
+              <div className="flex mb-2 items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200">
+                    Progress
+                  </span>
+                </div>
+              </div>
+              <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-gray-200">
+                <div 
+                  className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center transition-all duration-500 ${
+                    uploadStage === 'ipfs' ? 'bg-blue-500 w-1/3' : 
+                    uploadStage === 'ai-review' ? 'bg-yellow-500 w-2/3' : 
+                    uploadStage === 'blockchain' ? 'bg-green-500 w-full' : 'w-0'
+                  }`}>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className={`p-2 rounded-lg ${uploadStage === 'ipfs' ? 'bg-blue-100 text-blue-800' : uploadStage === 'ai-review' || uploadStage === 'blockchain' ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>
+            <div className="flex items-center justify-center">
+              {uploadStage === 'ipfs' ? (
+                <div className="h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin mr-2"></div>
+              ) : uploadStage === 'ai-review' || uploadStage === 'blockchain' ? (
+                <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : null}
+              <span className="text-sm font-medium">IPFS Upload</span>
+            </div>
+            {ipfsCid && uploadStage !== 'ipfs' && (
+              <span className="block text-xs mt-1 truncate">CID: {ipfsCid.substring(0, 10)}...</span>
+            )}
+          </div>
+          
+          <div className={`p-2 rounded-lg ${uploadStage === 'ai-review' ? 'bg-yellow-100 text-yellow-800' : uploadStage === 'blockchain' ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>
+            <div className="flex items-center justify-center">
+              {uploadStage === 'ai-review' ? (
+                <div className="h-4 w-4 rounded-full border-2 border-yellow-500 border-t-transparent animate-spin mr-2"></div>
+              ) : uploadStage === 'blockchain' ? (
+                <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : null}
+              <span className="text-sm font-medium">AI Review</span>
+            </div>
+            {aiReviewStatus && uploadStage !== 'ai-review' && (
+              <span className="block text-xs mt-1">{aiReviewStatus}</span>
+            )}
+          </div>
+          
+          <div className={`p-2 rounded-lg ${uploadStage === 'blockchain' ? 'bg-green-100 text-green-800' : 'bg-gray-100'}`}>
+            <div className="flex items-center justify-center">
+              {uploadStage === 'blockchain' ? (
+                <div className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin mr-2"></div>
+              ) : null}
+              <span className="text-sm font-medium">Blockchain Submission</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <h2 className="text-2xl font-semibold mb-6">Stage Reports</h2>
@@ -162,6 +285,7 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
                   setSelectedStageForReport(selectedProposal ? selectedProposal.currentStage-1: null);
                 }}
                 className="w-full p-2 border rounded"
+                disabled={isUploading}
               >
                 <option value="">Choose a proposal...</option>
                 {proposals.map(p => (
@@ -193,6 +317,7 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
                         <button
                           onClick={() => setStageReportFile(null)}
                           className="text-red-500 underline text-sm"
+                          disabled={isUploading}
                         >
                           Remove
                         </button>
@@ -204,17 +329,31 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
                         </svg>
                         <p className="mb-1">Drag and drop your PDF report here</p>
                         <p className="text-sm text-gray-500 mb-2">or</p>
-                        <label className="cursor-pointer bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        <label className={`cursor-pointer bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                           Browse Files
                           <input
                             type="file"
                             className="hidden"
                             accept=".pdf"
                             onChange={handleFileChange}
+                            disabled={isUploading}
                           />
                         </label>
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {renderUploadStageIndicator()}
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-start">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 mt-0.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm text-blue-700">
+                      Your document will first be uploaded to IPFS, then reviewed by our AI agent. Only approved documents will be submitted to the blockchain.
+                    </p>
                   </div>
                 </div>
 
@@ -228,7 +367,7 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
                   {isUploading ? (
                     <span className="flex items-center justify-center">
                       <span className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></span>
-                      Uploading...
+                      Processing...
                     </span>
                   ) : (
                     'Submit Report'
