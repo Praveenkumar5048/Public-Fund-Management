@@ -103,18 +103,29 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-2. Install required packages:
+2. Clone the repository:
+
+```
+git clone https://github.com/Sagarshivalingappaathani/Public-Fund-Management.git
+cd Public-Fund-Management/backend/
+```
+
+3. Install required packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your GROQ API key:
+4. Create a `.env` file with your GROQ API key:
 ```
 GROQ_API_KEY=your_groq_api_key_here
 DJANGO_SECRET_KEY=your_django_key
 ```
 
-4. Clone the utils.py and views.py files into your Django app directory
+5.Run migrations and start the server:
+```
+python manage.py migrate
+python manage.py runserver
+```
 
 ## API Documentation
 
