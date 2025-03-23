@@ -48,7 +48,8 @@ Our Public Fund Management System addresses these challenges through a unique co
 - Approved funds are allocated in three stages rather than a lump sum
 - Stage 1: Initial funding released to Proposal Creator (Recipient)
 - Recipient submits detailed utilization report before requesting next stage funding
-
+- All report documents (PDFs) are uploaded to the IPFS network, with only the CID (Content Identifier) stored on the blockchain for efficient storage and immutability
+    
 ### AI-Powered Verification & Automated Progression
 - Submitted reports are automatically verified using:
   - **Retrieval Augmented Generation (RAG)** technology
@@ -66,6 +67,7 @@ Our Public Fund Management System addresses these challenges through a unique co
 Our system is built with the following technologies:
 
 - **Blockchain**: Ethereum platform with Solidity smart contracts
+- **Decentralized Storage**: IPFS network for document storage with CIDs recorded on-chain
 - **Frontend**: Next.js with Web3.js integration
 - **AI Document Verification**:
   - RAG (Retrieval Augmented Generation) technology
@@ -81,13 +83,6 @@ Our system is built with the following technologies:
 - **Efficiency**: AI-powered verification eliminates delays caused by manual document checking
 - **Accountability**: Stage-wise funding ensures recipients deliver before receiving additional funds
 - **Reduced Corruption**: Automated verification and immutable records minimize opportunities for corruption
-
-## Future Enhancements
-
-- Integration with government identity verification systems
-- Mobile application for easier citizen participation
-- Enhanced analytics dashboard for public fund tracking
-- Multi-chain implementation for cross-government collaboration
 
 ## Team
 
