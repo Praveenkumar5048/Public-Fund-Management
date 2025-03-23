@@ -9,10 +9,9 @@ The Public Fund Management System is a decentralized application built on the Et
 Traditional government fund allocation faces several critical challenges:
 
 1. **Lack of Transparency**: Citizens often have limited visibility into how public funds are allocated and spent.
-2. **Centralized Decision-Making**: Fund allocation decisions are typically made by a small group of officials with minimal public input.
-3. **Inefficient Verification**: The manual verification of fund utilization reports is time-consuming, prone to errors, and vulnerable to corruption.
-4. **Delayed Fund Disbursement**: Traditional bureaucratic processes create bottlenecks, delaying project implementation and increasing costs.
-5. **Limited Accountability**: Without transparent tracking, it's difficult to hold recipients accountable for proper fund utilization.
+2. **Inefficient Verification**: The manual verification of fund utilization reports is time-consuming, prone to errors, and vulnerable to corruption.
+3. **Delayed Fund Disbursement**: Traditional bureaucratic processes create bottlenecks, delaying project implementation and increasing costs.
+4. **Limited Accountability**: Without transparent tracking, it's difficult to hold recipients accountable for proper fund utilization.
 
 ## Our Solution
 
