@@ -40,6 +40,7 @@ Our Public Fund Management System addresses these challenges through a unique co
 
 ### Public Voting & Feedback
 - Approved proposals are published for public review and voting
+- We use **Soulbound Tokens (SBT)** for public identity verification, ensuring each citizen can vote only once
 - Citizens can vote YES/NO and provide comments/feedback
 - Admin closes voting after predetermined period
 - Proposals with >50% public approval advance to funding stage
@@ -51,7 +52,7 @@ Our Public Fund Management System addresses these challenges through a unique co
 
 ### AI-Powered Verification & Automated Progression
 - Submitted reports are automatically verified using:
-  - Retrieval Augmented Generation (RAG) technology
+  - **Retrieval Augmented Generation (RAG)** technology
   - LangChain framework
   - Generative AI models
 - Verification checks for:
