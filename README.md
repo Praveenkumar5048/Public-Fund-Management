@@ -66,7 +66,7 @@ Our Public Fund Management System addresses these challenges through a unique co
 Our system is built with the following technologies:
 
 - **Blockchain**: Ethereum platform with Solidity smart contracts
-- **Frontend**: React.js with Web3.js integration
+- **Frontend**: Next.js with Web3.js integration
 - **AI Document Verification**:
   - RAG (Retrieval Augmented Generation) technology
   - LangChain framework for document processing
