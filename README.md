@@ -281,7 +281,7 @@ The system currently uses Groq's Llama 3 70B model. To use a different model, mo
 
 [output.pdf](files/output.pdf)
 
-<embed src=files/output.pdf type='application/pdf' width=700px height=700px>
+<embed src='files/output.pdf' type='application/pdf' width=700px height=700px />
 
 ## Team
 
