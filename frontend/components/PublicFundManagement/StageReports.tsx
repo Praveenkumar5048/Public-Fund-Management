@@ -60,12 +60,12 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
 
   async function proposalStageCompleted(proposalId: number, stageId: number) {
     
-    const PRIVATE_KEY = 'ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+    const privateKey  = process.env.METAMASK_PRIVATE_KEY;;
     
     const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
     
     // Create a wallet with the local provider
-    const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+    const wallet = new ethers.Wallet(privateKey , provider);
     
     // Get the contract instance using your helper function
     const contract = await getPublicFundingContract();
@@ -102,8 +102,8 @@ export function StageReports({ proposals, isAuthority, showNotification, onError
       const response = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-          pinata_api_key: "449f8e2d82e11b754f29",
-          pinata_secret_api_key: "8e6da3c908a4d317fe4686b7db62842d88e03b11284734a7f1ae86e8c1f03abe",
+          pinata_api_key:  process.env.PINATA_API_KEY,
+          pinata_secret_api_key: process.env.PINATA_SECRET_API_KEY,
         },
       });
       
